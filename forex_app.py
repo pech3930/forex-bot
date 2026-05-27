@@ -19,8 +19,6 @@ html,body,[class*="css"]{font-family:'Press Start 2P',monospace;background:#1a1a
   box-shadow:4px 4px 0 #1a4a7a!important;width:100%!important;padding:12px!important}
 .stButton>button:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 #1a4a7a!important}
 [data-testid="stSidebar"]{background:#0d0d1a!important;border-right:3px solid #4a9eff}
-[data-testid="stTextInput"] input{background:#0d0d1a!important;border:2px solid #4a9eff!important;
-  border-radius:0!important;color:#e0e0e0!important;font-family:'Press Start 2P',monospace!important;font-size:10px!important}
 iframe{border:none!important}
 .scanline{background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px);
   pointer-events:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999}
@@ -82,15 +80,15 @@ def fetch_news():
 def analyze(articles,pairs,key):
     client=anthropic.Anthropic(api_key=key)
     news_text="\n\n".join(f"[{a['source']}] {a['title']}\n{a['summary']}" for a in articles)
-    prompt=f"""คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์ตลาด Forex จงวิเคราะห์ข่าวสารล่าสุดต่อไปนี้
-และประเมินผลกระทบต่อคู่เงินเหล่านี้: {", ".join(pairs)}
+    prompt=f"""คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์ตลาด Forex
+วิเคราะห์ข่าวและประเมินผลกระทบต่อ: {", ".join(pairs)}
 
 ข่าวสาร:
 {news_text}
 
-ตอบกลับในรูปแบบ JSON เท่านั้น ไม่มีข้อความอื่น:
+ตอบกลับในรูปแบบ JSON เท่านั้น:
 {{
-  "overview": "<สรุปภาพรวม 2-3 ประโยคภาษาไทย>",
+  "overview": "<สรุป 2-3 ประโยคภาษาไทย>",
   "signals": {{
     {", ".join(f'"{p}": {{"signal": "<BULLISH/BEARISH/NEUTRAL>", "reason": "<เหตุผล 1 ประโยคภาษาไทย>"}}' for p in pairs)}
   }},
@@ -119,144 +117,196 @@ def parse_result(text,pairs):
 
 def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
-    positions=[(2.5,3.0),(5.0,4.5),(1.8,5.2),(5.8,2.2),(3.8,5.8),(2.0,4.0)]
+    # positions in tile coordinates (col, row) inside the office
+    positions=[(5,4),(9,4),(5,8),(9,8),(7,6),(3,6)]
     agents=[]
     for i,p in enumerate(pairs):
         sig,reason=signals.get(p,("NEUTRAL","Analyzing..."))
         msgs={"BULLISH":[p+"!","▲ BUY!","Bullish!","Going UP!"],
               "BEARISH":[p+"!","▼ SELL!","Bearish!","Going DOWN!"],
               "NEUTRAL":[p,"◆ WAIT","Watching","No signal"]}.get(sig,["..."])
-        gx,gy=positions[i%len(positions)]
-        agents.append({"pair":p,"signal":sig,"reason":reason,"gx":gx,"gy":gy,
-                       "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*25,
+        tx,ty=positions[i%len(positions)]
+        agents.append({"pair":p,"signal":sig,"reason":reason,
+                       "tx":float(tx),"ty":float(ty),
+                       "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*20,
                        "walking":True,"dir":1 if i%2==0 else -1})
     return agents
 
-def render_canvas(agents,sprite_url):
+def render_canvas(agents, asset_url, sprite_url):
     agents_json=str(agents).replace("True","true").replace("False","false").replace("'",'"')
     return f"""
 <style>
-html,body{{margin:0;padding:0;background:#1a1a2e;overflow:hidden}}
+html,body{{margin:0;padding:0;background:#2a1a0e;overflow:hidden}}
 canvas{{display:block;image-rendering:pixelated}}
 </style>
 <canvas id="fc"></canvas>
 <script>
+const ASSET_URL="{asset_url}";
 const SPRITE_URL="{sprite_url}";
 const AGENTS={agents_json};
 const cv=document.getElementById('fc');
 const ctx=cv.getContext('2d');
 ctx.imageSmoothingEnabled=false;
-let tick=0,spriteReady=false;
 
-const spr=new Image();
-spr.crossOrigin='anonymous';
-spr.src=SPRITE_URL;
-spr.onload=()=>spriteReady=true;
+// ── sizing ──
+const TILE=16, SCALE=3, TS=TILE*SCALE; // each tile 16px * 3 = 48px on screen
+const COLS=16, ROWS=12; // room size in tiles
+let tick=0;
 
 function resize(){{
   cv.width=window.innerWidth||860;
-  cv.height=Math.round(cv.width*0.6);
+  cv.height=Math.round(cv.width*0.65);
 }}
 resize();
-window.addEventListener('resize',()=>{{resize();}});
+window.addEventListener('resize',resize);
 
-function isoX(x,y){{return cv.width/2+(x-y)*40;}}
-function isoY(x,y){{return cv.height*0.22+(x+y)*20;}}
+// ── load assets ──
+const assets=new Image(); assets.crossOrigin='anonymous'; assets.src=ASSET_URL;
+const spr=new Image();    spr.crossOrigin='anonymous';    spr.src=SPRITE_URL;
+let assetsReady=false, spriteReady=false;
+assets.onload=()=>assetsReady=true;
+spr.onload=()=>spriteReady=true;
 
-function poly(pts,col){{
-  ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);
-  for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);
-  ctx.closePath();ctx.fillStyle=col;ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,0.2)';ctx.lineWidth=0.7;ctx.stroke();
+// room offset to center it
+function roomX(){{ return Math.floor((cv.width - COLS*TS)/2); }}
+function roomY(){{ return Math.floor((cv.height - ROWS*TS)/2); }}
+
+// draw one tile from all_assets.png (448x240, 16x16 each => 28 cols x 15 rows)
+// sx,sy = tile col,row in the spritesheet
+function drawTile(sx,sy,dx,dy,w=1,h=1){{
+  if(!assetsReady) return;
+  ctx.drawImage(assets, sx*TILE, sy*TILE, TILE*w, TILE*h,
+                        roomX()+dx*TS, roomY()+dy*TS, TS*w, TS*h);
 }}
 
-function box(gx,gy,gz,gw,gd,gh,tc,lc,rc){{
-  const ox=isoX(gx,gy),oy=isoY(gx,gy);
-  const TW=gw*40,TD=gd*40,TH=gh*20;
-  poly([[ox,oy-TH],[ox+TW,oy+TW/2-TH],[ox+TW-TD,oy+TW/2+TD/2-TH],[ox-TD,oy+TD/2-TH]],tc);
-  poly([[ox-TD,oy+TD/2-TH],[ox+TW-TD,oy+TW/2+TD/2-TH],[ox+TW-TD,oy+TW/2+TD/2],[ox-TD,oy+TD/2]],lc);
-  poly([[ox+TW,oy+TW/2-TH],[ox+TW-TD,oy+TW/2+TD/2-TH],[ox+TW-TD,oy+TW/2+TD/2],[ox+TW,oy+TW/2]],rc);
-}}
+// ── floor & walls ──
+function drawFloor(){{
+  // floor color
+  ctx.fillStyle='#c8a87a';
+  ctx.fillRect(roomX(), roomY(), COLS*TS, ROWS*TS);
 
-function tile(x,y){{
-  const ox=isoX(x,y),oy=isoY(x,y);
-  poly([[ox,oy-20],[ox+40,oy],[ox,oy+20],[ox-40,oy]],(x+y)%2===0?'#c8956c':'#b8845c');
-}}
-
-function drawRoom(){{
-  for(let x=0;x<9;x++)for(let y=0;y<9;y++) tile(x,y);
-  for(let x=0;x<9;x++) box(x,-0.5,0,1,0.08,5,'#d4c4b0','#b8a898','#c0b0a0');
-  for(let y=0;y<9;y++) box(-0.5,y,0,0.08,1,5,'#d4c4b0','#b8a898','#c0b0a0');
-  box(0,0,0,2.2,0.7,3.5,'#8B5E3C','#6B4522','#7a5030');
-  const bc=['#c0392b','#2980b9','#27ae60','#8e44ad','#e67e22','#e74c3c','#3498db','#1abc9c'];
-  for(let s=0;s<3;s++){{
-    box(0.06,0.06,s*1.1+0.3,2.1,0.58,0.1,'#9a6a3a','#7a4a2a','#8a5a30');
-    for(let b=0;b<5;b++) box(0.12+b*0.38,0.1,s*1.1+0.42,0.3,0.5,0.8,bc[(s*5+b)%8],bc[(s*5+b+1)%8],bc[(s*5+b+2)%8]);
+  // floor tile pattern
+  for(let x=0;x<COLS;x++) for(let y=0;y<ROWS;y++){{
+    if((x+y)%2===0){{
+      ctx.fillStyle='rgba(0,0,0,0.04)';
+      ctx.fillRect(roomX()+x*TS, roomY()+y*TS, TS, TS);
+    }}
   }}
-  box(5.6,0.15,1,1.6,0.35,0.1,'#8B5E3C','#6B4522','#7a5030');
-  box(5.6,0.15,2.2,1.6,0.35,0.1,'#8B5E3C','#6B4522','#7a5030');
-  box(5.7,0.17,1.12,0.32,0.25,0.5,'#c0392b','#a02a1a','#b0321a');
-  box(6.1,0.17,1.12,0.25,0.25,0.6,'#2980b9','#1a6090','#2270a0');
-  box(6.5,0.17,1.12,0.28,0.25,0.4,'#27ae60','#1a8040','#229850');
-  box(1.2,1.2,0,2.8,1.4,0.8,'#9a6a3a','#7a4a2a','#8a5a30');
-  box(1.2,1.2,0.8,2.8,1.4,0.1,'#c8956c','#a87550','#b88560');
-  box(1.6,1.3,0.9,1.2,0.15,1.5,'#2a2a3a','#1a1a2a','#222232');
-  box(1.65,1.33,1.1,1.1,0.08,1.1,'#0a2040','#072030','#0a1830');
-  const sx=isoX(1.7,1.34),sy=isoY(1.7,1.34)-22;
-  ctx.fillStyle='#00ff41';
-  for(let i=0;i<6;i++)ctx.fillRect(sx-10+i*2,sy+i*5,25+i*3,2);
-  ctx.fillStyle='#4a9eff';ctx.fillRect(sx-10,sy+34,30,2);
-  box(2.1,1.32,0.8,0.35,0.1,0.25,'#333','#222','#2a2a2a');
-  box(2.7,1.35,0.88,0.95,0.6,0.07,'#888','#666','#777');
-  box(3.8,1.4,0.88,0.25,0.35,0.08,'#999','#777','#888');
-  box(3.5,1.25,0.9,0.3,0.3,0.4,'#8B4513','#6B3010','#7a3f10');
-  const dp=isoX(3.65,1.38),dpy=isoY(3.65,1.38)-18;
-  ctx.fillStyle='#2d7a1b';ctx.beginPath();ctx.ellipse(dp,dpy-8,8,10,0,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#3a9a22';ctx.beginPath();ctx.ellipse(dp-4,dpy-5,5,7,-.3,0,Math.PI*2);ctx.fill();
-  box(4.5,3.5,0,2.3,1.4,0.8,'#9a6a3a','#7a4a2a','#8a5a30');
-  box(4.5,3.5,0.8,2.3,1.4,0.1,'#c8956c','#a87550','#b88560');
-  box(4.8,3.7,0.9,1.1,0.85,0.07,'#888','#666','#777');
-  box(4.8,3.7,0.97,1.1,0.08,0.65,'#2a2a3a','#1a1a2a','#222232');
-  const lx=isoX(4.85,3.72),ly=isoY(4.85,3.72)-20;
-  ctx.fillStyle='#4a9eff';ctx.fillRect(lx-6,ly-6,24,2);
-  ctx.fillStyle='#00ff41';ctx.fillRect(lx-6,ly-2,18,2);
-  ctx.fillStyle='#ffd700';ctx.fillRect(lx-6,ly+2,20,2);
-  box(2.2,2.8,0,0.85,0.85,0.6,'#1a1a2e','#0d0d1a','#141428');
-  box(2.2,2.8,0.6,0.85,0.85,0.1,'#2a2a4a','#1a1a3a','#222240');
-  box(2.2,2.8,0.7,0.85,0.12,1.0,'#1a1a2e','#0d0d1a','#141428');
-  box(5.5,5.2,0,0.85,0.85,0.6,'#1a1a2e','#0d0d1a','#141428');
-  box(5.5,5.2,0.6,0.85,0.85,0.1,'#2a2a4a','#1a1a3a','#222240');
-  box(5.5,5.2,0.7,0.85,0.12,1.0,'#1a1a2e','#0d0d1a','#141428');
-  box(3.5,0,1.8,2.5,0.08,2.0,'#f5f5ee','#e5e5de','#eeeeea');
-  const wx=isoX(3.6,-0.01),wy=isoY(3.6,-0.01)-36;
-  ctx.fillStyle='#c0392b';ctx.font='bold 7px monospace';ctx.fillText('FOREX SIGNALS',wx-15,wy+10);
-  ctx.fillStyle='#00c853';ctx.fillRect(wx-12,wy+15,28,2.5);
-  ctx.fillStyle='#ff3131';ctx.fillRect(wx-12,wy+21,20,2.5);
-  ctx.fillStyle='#ffd700';ctx.fillRect(wx-12,wy+27,24,2.5);
-  box(7.5,0.5,0,0.5,0.5,0.6,'#c0522a','#a03a1a','#b04422');
-  const px=isoX(7.75,0.75),py=isoY(7.75,0.75)-12;
-  ctx.fillStyle='#2d7a1b';
-  ctx.beginPath();ctx.ellipse(px-8,py-18,9,15,-.3,0,Math.PI*2);ctx.fill();
-  ctx.beginPath();ctx.ellipse(px+8,py-15,7,12,.3,0,Math.PI*2);ctx.fill();
-  ctx.beginPath();ctx.ellipse(px,py-22,6,18,0,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#3a9a22';
-  ctx.beginPath();ctx.ellipse(px-4,py-20,5,10,-.2,0,Math.PI*2);ctx.fill();
-  box(-0.07,3.5,1.2,0.07,2,2,'#87ceeb','#6aadcc','#78bedd');
-  box(-0.07,3.48,1.2,0.07,0.3,2,'#8b3a8b','#6a2a6a','#7a307a');
-  box(-0.07,5.22,1.2,0.07,0.28,2,'#8b3a8b','#6a2a6a','#7a307a');
-  box(7.5,7.5,0,0.1,0.1,3,'#888','#666','#777');
-  const lampX=isoX(7.55,7.55),lampY=isoY(7.55,7.55)-60;
-  ctx.fillStyle='#ffeeaa';ctx.beginPath();ctx.ellipse(lampX,lampY,14,8,0,0,Math.PI*2);ctx.fill();
-  const cg=ctx.createRadialGradient(isoX(4,4),isoY(4,4),10,isoX(4,4),isoY(4,4),160);
-  cg.addColorStop(0,'rgba(255,240,180,0.12)');cg.addColorStop(1,'rgba(255,240,180,0)');
-  ctx.fillStyle=cg;ctx.beginPath();ctx.ellipse(isoX(4,4),isoY(4,4),160,90,0,0,Math.PI*2);ctx.fill();
-  box(1.4,1.28,0.92,0.22,0.22,0.3,'#fff','#eee','#f5f5f5');
+
+  // walls (top & left)
+  ctx.fillStyle='#d4c4a8';
+  ctx.fillRect(roomX(), roomY()-TS, COLS*TS, TS);     // top wall
+  ctx.fillRect(roomX()-TS, roomY(), TS, ROWS*TS);     // left wall
+
+  // wall border
+  ctx.fillStyle='#8B7355';
+  ctx.fillRect(roomX(), roomY(), COLS*TS, 3);         // top edge
+  ctx.fillRect(roomX(), roomY(), 3, ROWS*TS);         // left edge
+  ctx.fillRect(roomX(), roomY()+ROWS*TS-3, COLS*TS, 3); // bottom edge
+  ctx.fillRect(roomX()+COLS*TS-3, roomY(), 3, ROWS*TS); // right edge
+
+  // baseboard
+  ctx.fillStyle='#a08060';
+  ctx.fillRect(roomX(), roomY()+ROWS*TS-6, COLS*TS, 6);
+  ctx.fillRect(roomX()+COLS*TS-6, roomY(), 6, ROWS*TS);
 }}
 
-const TOTAL_FRAMES=12;
+// ── draw office furniture using asset tiles ──
+// all_assets.png layout (measured from image):
+// Row 0: floor tiles top-left area
+// Row 0-3 col 0-3: L-shaped desk top-left
+// Row 0-1 col 0-5: big desk top
+// Row 3-5 col 0-2: cabinet/shelf left
+// Row 6-8 col 0-2: small furniture
+// Row 0-2 col 7-9: computer setup
+// Row 3-5 col 7-10: misc items
+// Row 6-9 col 0-8: plants row
+// Row 0-5 col 10-17: various items right side
+
+function drawFurniture(){{
+  if(!assetsReady) return;
+
+  // ── DESKS (top-left of asset = brown desk, 2x2 tiles) ──
+  // Desk 1 - top area
+  drawTile(0,0, 1,1, 2,2);   // brown desk top-left
+  drawTile(0,0, 4,1, 2,2);   // desk copy
+
+  // Desk 2 - middle
+  drawTile(0,3, 1,5, 2,2);
+  drawTile(0,3, 4,5, 2,2);
+  drawTile(0,3, 7,5, 2,2);
+
+  // Desk 3 - bottom row
+  drawTile(0,0, 1,9, 2,2);
+  drawTile(0,0, 4,9, 2,2);
+  drawTile(0,0, 10,9, 2,2);
+
+  // ── COMPUTERS on desks (col 7-9, row 0-2 in assets) ──
+  drawTile(7,0, 2,0, 2,2);   // computer on desk1
+  drawTile(7,0, 5,0, 2,2);   // computer on desk2
+  drawTile(7,0, 2,4, 2,2);   // computer on desk3
+  drawTile(7,0, 5,4, 2,2);
+  drawTile(7,0, 8,4, 2,2);
+  drawTile(7,0, 2,8, 2,2);
+  drawTile(7,0, 5,8, 2,2);
+  drawTile(7,0,11,8, 2,2);
+
+  // ── CHAIRS (col 13-14, row 0-2 in assets) ──
+  drawTile(13,0, 2,3, 1,2);
+  drawTile(13,0, 5,3, 1,2);
+  drawTile(13,0, 2,7, 1,2);
+  drawTile(13,0, 5,7, 1,2);
+  drawTile(13,0, 8,7, 1,2);
+  drawTile(13,0, 2,11,1,2);
+  drawTile(13,0, 5,11,1,2);
+  drawTile(13,0,11,11,1,2);
+
+  // ── PLANTS row (row 6-8 col 0-8 in assets) ──
+  drawTile(0,6,  0,0, 1,2);   // plant corner top-left
+  drawTile(2,6, 15,0, 1,2);   // plant corner top-right
+  drawTile(4,6,  0,10,1,2);   // plant corner bottom-left
+  drawTile(6,6, 15,10,1,2);   // plant corner bottom-right
+  drawTile(1,6,  7,0, 1,2);   // desk plant center top
+  drawTile(3,6, 13,5, 1,2);   // plant right side
+
+  // ── BOOKSHELF / cabinet right wall ──
+  drawTile(10,0, 13,0, 2,3);  // bookshelf right top
+  drawTile(10,0, 13,3, 2,3);  // bookshelf right bottom
+
+  // ── whiteboard / BOSS sign ──
+  drawTile(17,3,  8,0, 2,1);  // BOSS board
+  drawTile(18,3, 10,0, 2,2);  // chart board
+
+  // ── misc items on desks ──
+  drawTile(9,0,  3,1, 1,1);   // papers
+  drawTile(9,1,  6,1, 1,1);   // coffee
+  drawTile(9,0,  9,5, 1,1);   // papers
+  drawTile(9,1,  3,5, 1,1);   // coffee
+
+  // ── water cooler ──
+  drawTile(9,2, 12,4, 1,2);
+
+  // ── trash bin ──
+  drawTile(13,6, 14,10,1,1);
+  drawTile(13,6,  0,4, 1,1);
+}}
+
+// ── ambient light overlay ──
+function drawLight(){{
+  const cx=roomX()+cv.width*0.5-roomX();
+  const cy=roomY()+ROWS*TS*0.4;
+  const grad=ctx.createRadialGradient(roomX()+COLS*TS/2,roomY()+ROWS*TS/2,20,
+                                       roomX()+COLS*TS/2,roomY()+ROWS*TS/2,COLS*TS*0.7);
+  grad.addColorStop(0,'rgba(255,240,200,0.08)');
+  grad.addColorStop(1,'rgba(255,240,200,0)');
+  ctx.fillStyle=grad;
+  ctx.fillRect(roomX(),roomY(),COLS*TS,ROWS*TS);
+}}
+
+// ── Astronaut sprite ──
 const WALK_FRAMES=[8,9,10,11];
 const STAND_FRAME=8;
-const SCALE=3;
+const TOTAL_FRAMES=12;
 let FW=0,FH=0;
 
 function getSpriteSize(){{
@@ -273,7 +323,7 @@ function drawSprite(px,py,frameIdx,dir,tint){{
   if(dir<0){{ctx.translate(px+dw,py);ctx.scale(-1,1);ctx.drawImage(spr,frameIdx*fw,0,fw,fh,0,0,dw,dh);}}
   else ctx.drawImage(spr,frameIdx*fw,0,fw,fh,px,py,dw,dh);
   ctx.globalCompositeOperation='multiply';
-  ctx.globalAlpha=0.22;
+  ctx.globalAlpha=0.2;
   ctx.fillStyle=tint;
   ctx.fillRect(dir<0?0:px,py,dw,dh);
   ctx.globalCompositeOperation='source-over';
@@ -281,12 +331,13 @@ function drawSprite(px,py,frameIdx,dir,tint){{
   ctx.restore();
 }}
 
+// ── Speech bubble ──
 function drawBubble(px,py,text,sig){{
   const col=sig==='BULLISH'?'#00c853':sig==='BEARISH'?'#ff3131':'#ffd700';
   ctx.font='5px "Press Start 2P",monospace';
   const tw=ctx.measureText(text).width;
   const bw=tw+14,bh=18;
-  const bx=px-bw/2,by=py-bh-12;
+  const bx=px-bw/2,by=py-bh-10;
   ctx.fillStyle='#fff';ctx.fillRect(bx-2,by-2,bw+4,bh+4);
   ctx.fillStyle='#000';ctx.fillRect(bx,by,bw,bh);
   ctx.fillStyle=col;ctx.fillRect(bx,by,bw,3);
@@ -296,59 +347,83 @@ function drawBubble(px,py,text,sig){{
   ctx.fillStyle='#000';ctx.beginPath();ctx.moveTo(px-2,by+bh+2);ctx.lineTo(px+2,by+bh+2);ctx.lineTo(px,by+bh+8);ctx.fill();
 }}
 
+// ── Draw agent ──
 function drawAgent(a){{
   const {{fw,fh}}=getSpriteSize();
   const dw=fw*SCALE,dh=fh*SCALE;
-  const px=isoX(a.gx,a.gy)-dw/2;
-  const py=isoY(a.gx,a.gy)-dh+4;
+  // convert tile position to screen
+  const px=roomX()+a.tx*TS + (TS-dw)/2;
+  const py=roomY()+a.ty*TS + (TS-dh);
   const frameIdx=a.walking?WALK_FRAMES[Math.floor(a.fr/6)%4]:STAND_FRAME;
-  ctx.fillStyle='rgba(0,0,0,0.2)';
-  ctx.beginPath();ctx.ellipse(px+dw/2,py+dh-2,dw/2.5,4,0,0,Math.PI*2);ctx.fill();
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,0.18)';
+  ctx.beginPath();ctx.ellipse(px+dw/2,py+dh,dw/2.5,4,0,0,Math.PI*2);ctx.fill();
   drawSprite(px,py,frameIdx,a.dir,a.tint);
+  // pair label
   const sc=a.signal==='BULLISH'?'#00c853':a.signal==='BEARISH'?'#ff3131':'#ffd700';
-  ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fillRect(px,py+dh+1,dw,12);
+  ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fillRect(px,py+dh+1,dw,11);
   ctx.fillStyle=sc;ctx.font='5px monospace';ctx.textAlign='center';
-  ctx.fillText(a.pair,px+dw/2,py+dh+10);ctx.textAlign='left';
+  ctx.fillText(a.pair,px+dw/2,py+dh+9);ctx.textAlign='left';
+  // bubble
   const msgIdx=Math.floor((tick+AGENTS.indexOf(a)*35)/90)%a.msgs.length;
-  drawBubble(px+dw/2,py,a.msgs[msgIdx],a.signal);
+  drawBubble(px+dw/2,py-2,a.msgs[msgIdx],a.signal);
 }}
 
+// ── Update agents (walk within room) ──
 function updateAgents(){{
   AGENTS.forEach(a=>{{
     if(a.walking){{
-      a.gx+=a.dir*0.012;a.gy+=a.dir*0.005;a.fr+=1;
-      if(a.gx>8.2){{a.gx=8.2;a.dir=-1;}}
-      if(a.gx<0.5){{a.gx=0.5;a.dir=1;}}
-      if(a.gy>8.2){{a.gy=8.2;a.dir=-1;}}
-      if(a.gy<0.5){{a.gy=0.5;a.dir=1;}}
+      a.tx+=a.dir*0.03;
+      a.fr+=1;
+      if(a.tx>COLS-2){{a.tx=COLS-2;a.dir=-1;}}
+      if(a.tx<1){{a.tx=1;a.dir=1;}}
     }}
-    if(Math.random()<0.003){{a.walking=false;setTimeout(()=>a.walking=true,1800+Math.random()*2200);}}
+    if(Math.random()<0.003){{
+      a.walking=false;
+      setTimeout(()=>a.walking=true,1500+Math.random()*2500);
+    }}
   }});
 }}
 
+// ── Main loop ──
 function loop(){{
   tick++;
   ctx.clearRect(0,0,cv.width,cv.height);
-  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,cv.width,cv.height);
-  drawRoom();
+
+  // background
+  ctx.fillStyle='#1a1208';
+  ctx.fillRect(0,0,cv.width,cv.height);
+
+  drawFloor();
+  drawFurniture();
+  drawLight();
+
   updateAgents();
-  [...AGENTS].sort((a,b)=>(a.gx+a.gy)-(b.gx+b.gy)).forEach(a=>drawAgent(a));
+  // depth sort by ty
+  [...AGENTS].sort((a,b)=>a.ty-b.ty).forEach(a=>drawAgent(a));
+
+  // clock
   const n=new Date();
-  const ts=n.getHours().toString().padStart(2,'0')+':'+n.getMinutes().toString().padStart(2,'0')+':'+n.getSeconds().toString().padStart(2,'0');
+  const ts=n.getHours().toString().padStart(2,'0')+':'+
+           n.getMinutes().toString().padStart(2,'0')+':'+
+           n.getSeconds().toString().padStart(2,'0');
   ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fillRect(cv.width-96,8,90,18);
-  ctx.fillStyle='#00ff41';ctx.font='8px "Press Start 2P",monospace';ctx.fillText(ts,cv.width-90,21);
+  ctx.fillStyle='#00ff41';ctx.font='8px "Press Start 2P",monospace';
+  ctx.fillText(ts,cv.width-90,21);
+
   requestAnimationFrame(loop);
 }}
 loop();
 </script>
 """
 
+ASSET_URL  = "https://raw.githubusercontent.com/pech3930/forex-bot/main/all_assets.png"
 SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronaut.png"
 
 if not run_btn:
     default_agents=build_agents(
         selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],{})
-    st.components.v1.html(render_canvas(default_agents,SPRITE_URL),height=600,scrolling=False)
+    st.components.v1.html(render_canvas(default_agents,ASSET_URL,SPRITE_URL),height=620,scrolling=False)
     st.markdown("""
     <div style="text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#333;padding:8px">
     ← PRESS ANALYZE NOW TO START
@@ -362,14 +437,17 @@ else:
         ph=st.empty()
         loading=build_agents(selected_pairs,{p:("NEUTRAL","Loading...") for p in selected_pairs})
         for a in loading: a["msgs"]=["Fetching!","Reading...","Analyzing!","Working..."]
-        ph.components.v1.html(render_canvas(loading,SPRITE_URL),height=600,scrolling=False)
+        ph.components.v1.html(render_canvas(loading,ASSET_URL,SPRITE_URL),height=620,scrolling=False)
+
         with st.spinner(""):
             articles=fetch_news()
             raw=analyze(articles,selected_pairs,api_key)
             overview,signals,watch=parse_result(raw,selected_pairs)
+
         final=build_agents(selected_pairs,signals)
         ph.empty()
-        st.components.v1.html(render_canvas(final,SPRITE_URL),height=600,scrolling=False)
+        st.components.v1.html(render_canvas(final,ASSET_URL,SPRITE_URL),height=620,scrolling=False)
+
         cols=st.columns(len(selected_pairs))
         for i,(p,col) in enumerate(zip(selected_pairs,cols)):
             sig,reason=signals.get(p,("NEUTRAL","No data"))
@@ -382,18 +460,21 @@ else:
                   <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:{sc};border:1px solid {sc};padding:2px 4px;display:inline-block">{arrow} {sig}</div>
                   <div style="font-family:'Press Start 2P',monospace;font-size:5px;color:#555;margin-top:4px;line-height:1.6">{reason[:45]}</div>
                 </div>""", unsafe_allow_html=True)
+
         if overview:
             st.markdown(f"""
             <div style="background:#0d0d1a;border:2px solid #4a9eff;padding:10px;margin-top:4px">
               <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4a9eff;margin-bottom:6px">📋 OVERVIEW</div>
               <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#ccc;line-height:1.9">{overview}</div>
             </div>""", unsafe_allow_html=True)
+
         if watch:
             st.markdown(f"""
             <div style="background:#0d0d1a;border:2px solid #ffd700;padding:8px;margin-top:6px">
               <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;margin-bottom:4px">⚠ WATCH</div>
               <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#aaa;line-height:1.8">{watch}</div>
             </div>""", unsafe_allow_html=True)
+
         st.markdown("""
         <div style="border:2px dashed #ff3131;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:6px;color:#ff3131;margin-top:8px">
         ⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY
