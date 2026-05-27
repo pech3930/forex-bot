@@ -1,54 +1,55 @@
 import streamlit as st
 import anthropic
-import feedparser
-import os
-from datetime import datetime
+import json
 
-# --- CONFIG ---
-st.set_page_config(page_title="FOREX TRADING OFFICE", page_icon="💹", layout="wide")
+# ตั้งค่าหน้าจอ
+st.set_page_config(layout="wide")
 
-# CSS สวยงาม
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-.stApp {background:#1a1a2e; color:#e0e0e0; font-family:'Press Start 2P',monospace;}
-.stButton>button {background:#4a9eff!important; color:#000!important; width:100%!important; font-family:'Press Start 2P',monospace!important;}
-</style>
-""", unsafe_allow_html=True)
+# 1. ฟังก์ชัน Render Canvas (ที่สร้างตัวละคร)
+def render_canvas(agents, sprite_url):
+    agents_json = str(agents).replace("True", "true").replace("False", "false").replace("'", '"')
+    return f"""
+    <canvas id="fc" style="width:100%; height:500px; background:#1a1a2e; image-rendering:pixelated"></canvas>
+    <script>
+    const AGENTS = {agents_json};
+    const cv = document.getElementById('fc');
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#00ff41';
+    ctx.font = '20px monospace';
+    ctx.fillText("SYSTEM READY: " + AGENTS.length + " AGENTS ACTIVE", 50, 50);
+    // ใส่ Logic วาดห้องและตัวละครของคุณที่นี่...
+    </script>
+    """
 
-# --- FUNCTIONS ---
-def analyze(articles, pairs, key):
+# 2. ฟังก์ชันวิเคราะห์
+def analyze(pairs, key):
     client = anthropic.Anthropic(api_key=key)
-    news_text = "\n\n".join(f"[{a['source']}] {a['title']}" for a in articles)
-    prompt = f"วิเคราะห์ Forex สำหรับคู่ {', '.join(pairs)} จากข่าวเหล่านี้:\n{news_text}\nตอบแบบ JSON: {{'overview': '...', 'signals': {{'คู่เงิน': 'BULLISH/BEARISH/NEUTRAL', 'reason': '...'}}, 'watch': '...'}}"
-    
-    # ใช้โมเดลที่ถูกต้อง
-    response = client.messages.create(
+    prompt = f"วิเคราะห์คู่เงิน {', '.join(pairs)}. ตอบ JSON เท่านั้น: {{'signals': {{'EUR/USD': 'BULLISH'}}}}"
+    r = client.messages.create(
         model="claude-3-5-sonnet-20241022",
-        max_tokens=1000,
+        max_tokens=500,
         messages=[{"role": "user", "content": prompt}]
     )
-    return response.content[0].text
+    return r.content[0].text
 
-# --- UI ---
-st.title("💹 FOREX TRADING OFFICE")
-api_key = st.sidebar.text_input("Enter Anthropic API Key", type="password")
-pairs = st.sidebar.multiselect("Select Pairs", ["EUR/USD", "USD/THB", "USD/JPY", "GBP/USD", "XAU/USD"], default=["EUR/USD"])
+# 3. UI หลัก
+st.markdown("## 💹 FOREX TRADING OFFICE")
+api_key = st.sidebar.text_input("API Key", type="password")
+pairs = st.sidebar.multiselect("Pairs", ["EUR/USD", "XAU/USD"], default=["EUR/USD"])
+
+# เก็บสถานะไว้ใน Session State เพื่อให้ตัวละครไม่หาย
+if 'agents' not in st.session_state:
+    st.session_state.agents = [{"pair": "EUR/USD", "signal": "NEUTRAL"}]
 
 if st.sidebar.button("▶ ANALYZE NOW"):
-    if not api_key:
-        st.error("กรุณากรอก API Key ใน Sidebar")
-    else:
-        try:
-            with st.spinner("Analyzing market..."):
-                # สมมติสถานะเริ่มต้น
-                articles = [{"source": "Test", "title": "Market is volatile"}] # แทนที่ด้วย fetch_news()
-                result = analyze(articles, pairs, api_key)
-                st.json(result)
-                st.success("วิเคราะห์เสร็จสิ้น")
-        except Exception as e:
-            st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ API: {e}")
-            st.write("ตรวจสอบให้แน่ใจว่า API Key ของคุณถูกต้องและยังมี Credits")
+    try:
+        raw = analyze(pairs, api_key)
+        data = json.loads(raw[raw.find('{'):raw.rfind('}')+1])
+        st.session_state.agents = [{"pair": p, "signal": data['signals'].get(p, "NEUTRAL")} for p in pairs]
+        st.success("Updated!")
+    except Exception as e:
+        st.error(f"Error: {e}")
 
-else:
-    st.write("พร้อมใช้งานแล้ว... กรุณากดปุ่ม Analyze Now")
+# แสดงผล Canvas เสมอ
+html_code = render_canvas(st.session_state.agents, "")
+st.components.v1.html(html_code, height=520)
