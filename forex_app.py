@@ -5,17 +5,19 @@ import os
 import json
 from datetime import datetime
 
+# 1. การตั้งค่าหน้าจอ
 st.set_page_config(page_title="FOREX TRADING OFFICE", page_icon="💹", layout="wide")
 
+# 2. CSS สำหรับธีม Dark Ambient สไตล์ Console
 st.markdown("""
 <style>
-/* 1. พื้นหลังแบบ Dark Ambient ให้ความรู้สึกเหมือนหน้าจอคอนโซล */
+/* พื้นหลังมืดไล่เฉดสี */
 .stApp {
     background: radial-gradient(circle at center, #1b2735 0%, #090a0f 100%);
     background-attachment: fixed;
 }
 
-/* 2. ตั้งค่าฟอนต์ */
+/* ฟอนต์และสีข้อความ */
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 * {box-sizing:border-box; image-rendering:pixelated}
 html, body, [class*="css"] {
@@ -23,7 +25,7 @@ html, body, [class*="css"] {
     color: #e0e0e0;
 }
 
-/* 3. กล่องข้อมูลแบบ Glassmorphism */
+/* กล่องเนื้อหาแบบ Glassmorphism */
 [data-testid="stVerticalBlock"] {
     background: rgba(10, 15, 25, 0.7);
     border: 1px solid rgba(74, 158, 255, 0.3);
@@ -31,7 +33,7 @@ html, body, [class*="css"] {
     border-radius: 5px;
 }
 
-/* 4. สไตล์ปุ่มกด */
+/* ปุ่มสไตล์นีออน */
 .stButton>button {
     font-family: 'Press Start 2P', monospace !important;
     background: linear-gradient(90deg, #4a9eff, #1a4a7a) !important;
@@ -45,13 +47,13 @@ html, body, [class*="css"] {
     box-shadow: 0 0 15px #00ff41;
 }
 
-/* 5. สไตล์ Sidebar */
+/* Sidebar มืดสนิท */
 [data-testid="stSidebar"] {
     background: rgba(0, 0, 0, 0.9) !important;
     border-right: 2px solid #4a9eff;
 }
 
-/* 6. Scanline Effect */
+/* Scanline Effect */
 .scanline {
     background: linear-gradient(to bottom, rgba(200,200,200,0) 50%, rgba(0,0,0,0.1) 50%);
     background-size: 100% 4px;
@@ -64,19 +66,16 @@ html, body, [class*="css"] {
 <div class="scanline"></div>
 """, unsafe_allow_html=True)
 
-# --- ส่วนการทำงาน ---
-
+# 3. ส่วนการทำงาน (Logic)
 with st.sidebar:
     st.markdown('### ⚙ CONFIG')
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
-        api_key = st.text_input("🔑 ANTHROPIC API KEY", type="password")
+        api_key = st.text_input("🔑 API KEY", type="password")
     
     st.markdown('### 💱 PAIRS')
     selected_pairs = st.multiselect("", ["EUR/USD","USD/THB","GBP/USD","USD/JPY","XAU/USD"], default=["EUR/USD","XAU/USD"])
     
-    st.markdown('### 📡 SOURCES')
-    use_cnbc = st.checkbox("CNBC News", value=True)
     run_btn = st.button("▶ ANALYZE NOW")
 
 def fetch_news():
@@ -91,9 +90,9 @@ def fetch_news():
 
 def analyze(articles, pairs, key):
     client = anthropic.Anthropic(api_key=key)
-    prompt = f"วิเคราะห์ข่าว: {articles} ต่อคู่เงิน {pairs} ตอบเป็น JSON เท่านั้น {'overview':..., 'signals':{คู่เงิน: {'signal':'BULLISH/BEARISH', 'reason':...}}, 'watch':...}"
+    prompt = f"วิเคราะห์ข่าว: {articles} ต่อคู่เงิน {pairs}. ตอบเป็น JSON format: {{'overview': '...', 'signals': {{'คู่เงิน': {{'signal': '...', 'reason': '...'}}}}, 'watch': '...'}}"
     
-    # แก้ไขชื่อโมเดลเป็นรุ่นล่าสุดที่ถูกต้อง
+    # แก้ไขโมเดลให้ถูกต้อง
     r = client.messages.create(
         model="claude-3-5-sonnet-20241022",
         max_tokens=1000,
@@ -101,22 +100,25 @@ def analyze(articles, pairs, key):
     )
     return r.content[0].text
 
-# --- การเรนเดอร์หน้าจอ ---
+# 4. ส่วนการแสดงผล
 if run_btn and api_key:
     with st.spinner("Analyzing Market..."):
-        articles = fetch_news()
-        raw_result = analyze(articles, selected_pairs, api_key)
-        
-        # จัดการข้อมูล JSON
         try:
-            data = json.loads(raw_result[raw_result.find('{'):raw_result.rfind('}')+1])
-            st.success("Analysis Complete!")
-            st.write(f"**Overview:** {data['overview']}")
+            articles = fetch_news()
+            raw_result = analyze(articles, selected_pairs, api_key)
+            
+            # ตัดเอาเฉพาะส่วนที่เป็น JSON
+            json_text = raw_result[raw_result.find('{'):raw_result.rfind('}')+1]
+            data = json.loads(json_text)
+            
+            st.markdown(f"### 📋 OVERVIEW\n{data['overview']}")
             
             for pair, info in data['signals'].items():
-                st.info(f"{pair}: {info['signal']} - {info['reason']}")
-        except:
-            st.error("Error parsing AI response. Please try again.")
+                st.info(f"**{pair}**: {info['signal']} - {info['reason']}")
+            
+            st.warning(f"**WATCH:** {data['watch']}")
+        except Exception as e:
+            st.error("Error processing request. Please check API Key.")
 else:
     st.markdown("# 💹 FOREX TRADING OFFICE")
-    st.write("Welcome back, Commander. Please configure your settings and hit 'Analyze' to begin.")
+    st.write("Welcome, Commander. Please input your key and analyze the market.")
