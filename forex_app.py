@@ -5,49 +5,29 @@ import os
 import json
 from datetime import datetime
 
-# ตั้งค่าหน้าจอเป็นแบบ Wide เป็นอันดับแรก
 st.set_page_config(page_title="FOREX TRADING OFFICE", page_icon="💹", layout="wide")
 
-# ── บังคับ CSS ให้ขยายเต็มหน้าจอ 100% ทุกเวอร์ชันของ Streamlit ──
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;image-rendering:pixelated}
 html,body,[class*="css"]{font-family:'Press Start 2P',monospace;background:#1a1a2e;color:#e0e0e0}
 .stApp{background:#1a1a2e}
-
-/* ปลดล็อกความกว้างสูงสุด 100% แบบเด็ดขาดสำหรับทุกโครงสร้าง */
-div.block-container, 
-[data-testid="stAppViewBlockContainer"], 
-.stMainBlockContainer,
-.main .block-container {
-    max-width: 100% !important;
-    width: 100% !important;
-    padding-top: 1rem !important;
-    padding-bottom: 1rem !important;
-    padding-left: 1.5rem !important;
-    padding-right: 1.5rem !important;
-}
-
-/* ตั้งค่าปุ่มกดสไตล์ Retro */
+.block-container{padding:0.5rem 1rem!important}
 .stButton>button{font-family:'Press Start 2P',monospace!important;font-size:8px!important;
   background:#4a9eff!important;color:#000!important;border:none!important;border-radius:0!important;
   box-shadow:4px 4px 0 #1a4a7a!important;width:100%!important;padding:12px!important}
 .stButton>button:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 #1a4a7a!important}
-
-/* ตั้งค่า Sidebar */
 [data-testid="stSidebar"]{background:#0d0d1a!important;border-right:3px solid #4a9eff}
 [data-testid="stTextInput"] input{background:#0d0d1a!important;border:2px solid #4a9eff!important;
   border-radius:0!important;color:#e0e0e0!important;font-family:'Press Start 2P',monospace!important;font-size:10px!important}
-
-iframe{border:none!important; width:100% !important}
+iframe{border:none!important}
 .scanline{background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px);
   pointer-events:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999}
 </style>
 <div class="scanline"></div>
 """, unsafe_allow_html=True)
 
-# ส่วนหัวโปรแกรม
 st.markdown(f"""
 <div style="font-family:'Press Start 2P',monospace;font-size:10px;background:#000;
   border:3px solid #4a9eff;padding:10px 16px;box-shadow:6px 6px 0 #1a4a7a;margin-bottom:10px;
@@ -58,7 +38,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── ส่วนของ SIDEBAR ──
+# sidebar
 with st.sidebar:
     st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#4a9eff;margin-bottom:10px">⚙ CONFIG</div>', unsafe_allow_html=True)
     api_key = os.environ.get("ANTHROPIC_API_KEY","")
@@ -75,8 +55,7 @@ with st.sidebar:
         label_visibility="collapsed")
     st.markdown("---")
     st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#ffd700;margin-bottom:6px">📡 SOURCE</div>', unsafe_allow_html=True)
-    
-    use_cnbc = st.checkbox("CNBC News", value=True)
+    use_reuters   = st.checkbox("Reuters",       value=True)
     use_investing = st.checkbox("Investing.com", value=True)
     st.markdown("---")
     st.markdown("""
@@ -87,9 +66,8 @@ with st.sidebar:
     <br>""", unsafe_allow_html=True)
     run_btn = st.button("▶  ANALYZE NOW")
 
-# จัดการแหล่งข่าวสาร
 RSS = {}
-if use_cnbc:      RSS["CNBC"]          = "https://search.cnbc.com/rs/search/view.xml?partnerId=2000&keywords=forex"
+if use_reuters:   RSS["Reuters"]       = "https://feeds.reuters.com/reuters/businessNews"
 if use_investing: RSS["Investing.com"] = "https://www.investing.com/rss/news_25.rss"
 
 def fetch_news():
@@ -97,24 +75,21 @@ def fetch_news():
     for src,url in RSS.items():
         try:
             feed=feedparser.parse(url)
-            for e in feed.entries[:5]: 
+            for e in feed.entries[:8]:
                 articles.append({"source":src,"title":e.get("title",""),"summary":e.get("summary","")[:300]})
         except: pass
     return articles
 
 def analyze(articles,pairs,key):
     client=anthropic.Anthropic(api_key=key)
-    if not articles:
-        news_text = "ไม่มีข้อมูลข่าวสารล่าสุดในขณะนี้ โปรดวิเคราะห์แนวโน้มตลาดโดยอิงจากสถานการณ์เศรษฐกิจทั่วไป"
-    else:
-        news_text="\n\n".join(f"[{a['source']}] {a['title']}\n{a['summary']}" for a in articles)
+    news_text="\n\n".join(f"[{a['source']}] {a['title']}\n{a['summary']}" for a in articles)
     
     prompt=f"""คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์ตลาด Forex จงวิเคราะห์ข่าวสารล่าสุดต่อไปนี้ และประเมินผลกระทบต่อคู่เงินเหล่านี้: {", ".join(pairs)}
 
 ข่าวสารระบบ:
 {news_text}
 
-จงตอบกลับในรูปแบบ JSON ออบเจกต์เท่านั้น (ห้ามมีคำเกริ่นนำ หรือข้อความอธิบายอื่นใดนอกเหนือจาก JSON) โดยใช้โครงสร้างดังนี้:
+จงตอบกลับในรูปแบบ JSON ออบเจกต์เท่านั้น (ห้ามมีคำเกริ่นนำ หรือข้อความอื่นใดนอกเหนือจาก JSON) โดยใช้โครงสร้างดังนี้:
 {{
   "overview": "<สรุปภาพรวมข่าวเด่นและทิศทางตลาดใน 2-3 ประโยคเป็นภาษาไทย>",
   "signals": {{
@@ -123,6 +98,7 @@ def analyze(articles,pairs,key):
   "watch": "<ระบุประเด็นหรือตัวเลขเศรษฐกิจสำคัญที่ต้องจับตาดูต่อไป>"
 }}
 """
+    
     r=client.messages.create(
         model="claude-3-5-sonnet-20241022",
         max_tokens=1000,
@@ -155,7 +131,7 @@ def parse_result(text, pairs):
         return overview, signals, watch
     except Exception as e:
         default_signals = {p: ("NEUTRAL", "ระบบ Parsing ขัดข้อง กำลังรีเฟรชข้อมูล") for p in pairs}
-        return "วิเคราะห์ภาพรวมสำเร็จ (เกิดข้อขัดข้องชั่วคราวในการจัดฟอร์แมตข้อมูล)", default_signals, "ติดตามประกาศตัวเลขเศรษฐกิจหลักต่อไป"
+        return "วิเคราะห์ภาพรวมสำเร็จ (ขัดข้องด้านการแยกคำกรุณาลองใหม่อีกครั้ง)", default_signals, "ติดตามประกาศตัวเลขเศรษฐกิจหลักต่อไป"
 
 def build_agents(pairs, signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
@@ -174,11 +150,10 @@ def build_agents(pairs, signals):
                        "walking":True,"dir":1 if i%2==0 else -1})
     return agents
 
-# ── ส่วนควบคุม CANVAS (แก้ CSS ให้ Canvas ยืดหยุ่นเต็มกรอบ) ──
 def render_canvas(agents, sprite_url):
     agents_json=str(agents).replace("True","true").replace("False","false").replace("'",'"')
     return f"""
-<canvas id="fc" style="width:100%; height:100%; display:block; image-rendering:pixelated; box-sizing:border-box;"></canvas>
+<canvas id="fc" style="width:100%;display:block;image-rendering:pixelated"></canvas>
 <script>
 const SPRITE_URL="{sprite_url}";
 const AGENTS={agents_json};
@@ -403,7 +378,7 @@ loop();
 
 SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronaut.png"
 
-# ── ทำการ Render ส่วนหน้าจอหลัก ──
+# ── render ──
 if not run_btn:
     default_agents=build_agents(
         selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],
@@ -435,7 +410,7 @@ else:
         ph.empty()
         st.components.v1.html(render_canvas(final,SPRITE_URL),height=540,scrolling=False)
 
-        # การ์ดแสดงสัญญาณคู่เงินต่างๆ
+        # signal cards
         cols=st.columns(len(selected_pairs))
         for i,(p,col) in enumerate(zip(selected_pairs,cols)):
             sig,reason=signals.get(p,("NEUTRAL","No data"))
@@ -443,24 +418,24 @@ else:
             arrow="▲" if sig=="BULLISH" else "▼" if sig=="BEARISH" else "◆"
             with col:
                 st.markdown(f"""
-                <div style="background:#0d0d1a;border:2px solid {sc};padding:8px;text-align:center;margin-bottom:6px">
-                  <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#888;margin-bottom:4px">{p}</div>
-                  <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:{sc};border:1px solid {sc};padding:2px 4px;display:inline-block">{arrow} {sig}</div>
-                  <div style="font-family:'Press Start 2P',monospace;font-size:5px;color:#555;margin-top:4px;line-height:1.6">{reason[:45]}</div>
+                <div style="background:#0d0d1a;border:2px solid {sc};padding:8px;text-align:center;margin-bottom:6px\">
+                  <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#888;margin-bottom:4px\">{p}</div>
+                  <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:{sc};border:1px solid {sc};padding:2px 4px;display:inline-block\">{arrow} {sig}</div>
+                  <div style="font-family:'Press Start 2P',monospace;font-size:5px;color:#555;margin-top:4px;line-height:1.6\">{reason[:45]}</div>
                 </div>""", unsafe_allow_html=True)
 
         if overview:
             st.markdown(f"""
             <div style="background:#0d0d1a;border:2px solid #4a9eff;padding:10px;margin-top:4px">
               <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4a9eff;margin-bottom:6px">📋 OVERVIEW</div>
-              <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#ccc;line-height:1.9">{overview}</div>
+              <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#ccc;line-height:1.9\">{overview}</div>
             </div>""", unsafe_allow_html=True)
 
         if watch:
             st.markdown(f"""
             <div style="background:#0d0d1a;border:2px solid #ffd700;padding:8px;margin-top:6px">
-              <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;margin-bottom:4px">⚠ WATCH</div>
-              <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#aaa;line-height:1.8">{watch}</div>
+              <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;margin-bottom:4px\">⚠ WATCH</div>
+              <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#aaa;line-height:1.8\">{watch}</div>
             </div>""", unsafe_allow_html=True)
 
         st.markdown("""
