@@ -20,10 +20,7 @@ html,body,[class*="css"]{font-family:'Press Start 2P',monospace;background:#1a1a
 .stButton>button:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 #1a4a7a!important}
 [data-testid="stSidebar"]{background:#0d0d1a!important;border-right:3px solid #4a9eff}
 iframe{border:none!important}
-.scanline{background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px);
-  pointer-events:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999}
 </style>
-<div class="scanline"></div>
 """, unsafe_allow_html=True)
 
 st.markdown(f"""
@@ -112,246 +109,171 @@ def parse_result(text,pairs):
 
 def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
-    positions=[(3,4),(7,4),(11,4),(3,8),(7,8),(11,8)]
+    # x positions across the room (in % of room width)
+    positions_x=[0.2,0.4,0.6,0.8,0.3,0.7]
+    y_pos=0.55  # walk on floor level
     agents=[]
     for i,p in enumerate(pairs):
         sig,reason=signals.get(p,("NEUTRAL","Analyzing..."))
         msgs={"BULLISH":[p+"!","▲ BUY!","Bullish!","UP!"],
               "BEARISH":[p+"!","▼ SELL!","Bearish!","DOWN!"],
               "NEUTRAL":[p,"◆ WAIT","Watch","..."]}.get(sig,["..."])
-        tx,ty=positions[i%len(positions)]
         agents.append({"pair":p,"signal":sig,"reason":reason,
-                       "tx":float(tx),"ty":float(ty),
+                       "px":positions_x[i%len(positions_x)],"py":y_pos,
                        "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*20,
                        "walking":True,"dir":1 if i%2==0 else -1})
     return agents
 
-def render_canvas(agents, asset_url, sprite_url):
+def render_canvas(agents, sprite_url):
     agents_json=str(agents).replace("True","true").replace("False","false").replace("'",'"')
     return f"""
 <style>
-html,body{{margin:0;padding:0;background:#2a1a0e;overflow:hidden}}
-canvas{{display:block;image-rendering:pixelated}}
+html,body{{margin:0;padding:0;background:#1a1a2e;overflow:hidden}}
+.scene{{position:relative;width:100%;height:600px;background:#2a1a0e;overflow:hidden}}
+.room{{position:absolute;left:50%;top:0;transform:translateX(-50%);width:90%;max-width:1100px;height:100%}}
+.floor{{position:absolute;left:0;right:0;top:30%;bottom:0;
+  background:repeating-linear-gradient(90deg,#c8a870 0px,#c8a870 60px,#b89860 60px,#b89860 120px);
+  border-top:6px solid #6b4a2a}}
+.wall{{position:absolute;left:0;right:0;top:0;height:30%;
+  background:linear-gradient(180deg,#3a2a1a 0%,#4a3528 100%)}}
+.window{{position:absolute;top:8%;width:14%;height:18%;
+  background:linear-gradient(180deg,#5a8acc 0%,#3a6aac 100%);
+  border:4px solid #2a1a0e;box-shadow:inset 0 0 0 2px #87ceeb}}
+.window::before,.window::after{{content:'';position:absolute;background:#2a1a0e}}
+.window::before{{left:50%;top:0;bottom:0;width:3px;transform:translateX(-50%)}}
+.window::after{{top:50%;left:0;right:0;height:3px;transform:translateY(-50%)}}
+.w1{{left:8%}} .w2{{left:30%}} .w3{{left:52%}} .w4{{left:74%}}
+.desk{{position:absolute;width:130px;height:60px;background:#8B5E3C;
+  border:3px solid #5a3a1a;border-radius:4px}}
+.desk::before{{content:'';position:absolute;left:8px;top:-32px;width:50px;height:36px;
+  background:#1a1a2e;border:3px solid #333;border-radius:3px}}
+.desk::after{{content:'';position:absolute;left:13px;top:-26px;width:40px;height:25px;
+  background:#0a4a2e}}
+.d1{{left:5%;bottom:8%}} .d2{{left:30%;bottom:8%}} .d3{{left:55%;bottom:8%}} .d4{{left:80%;bottom:8%}}
+.plant{{position:absolute;width:30px;height:50px;bottom:8%}}
+.plant::before{{content:'';position:absolute;bottom:0;left:5px;width:20px;height:20px;
+  background:#8B4513;border:2px solid #5a3010;border-radius:3px}}
+.plant::after{{content:'🌿';position:absolute;bottom:18px;left:0;font-size:30px;line-height:1}}
+.p1{{left:1%}} .p2{{left:96%}} .p3{{left:22%}} .p4{{left:48%}} .p5{{left:72%}}
+.board{{position:absolute;background:#f5f5ee;border:4px solid #6b4a2a;
+  width:90px;height:60px;top:6%;color:#c0392b;font-family:monospace;font-size:8px;
+  padding:4px;display:flex;flex-direction:column;justify-content:space-around}}
+.b1{{left:18%}} .b2{{right:18%}}
+.board div{{display:flex;align-items:center;gap:3px}}
+.board span{{display:inline-block;width:30px;height:3px}}
+canvas{{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}}
 </style>
-<canvas id="fc"></canvas>
+<div class="scene">
+  <div class="room">
+    <div class="wall"></div>
+    <div class="window w1"></div>
+    <div class="window w2"></div>
+    <div class="window w3"></div>
+    <div class="window w4"></div>
+    <div class="floor"></div>
+    <div class="board b1">
+      <div>BUY <span style="background:#00c853"></span></div>
+      <div>SELL <span style="background:#ff3131"></span></div>
+      <div>HOLD <span style="background:#ffd700"></span></div>
+    </div>
+    <div class="board b2">
+      <div style="color:#4a9eff;font-weight:bold">SIGNALS</div>
+      <div>EUR <span style="background:#00c853"></span></div>
+      <div>USD <span style="background:#ffd700"></span></div>
+    </div>
+    <div class="desk d1"></div>
+    <div class="desk d2"></div>
+    <div class="desk d3"></div>
+    <div class="desk d4"></div>
+    <div class="plant p1"></div>
+    <div class="plant p2"></div>
+    <div class="plant p3"></div>
+    <div class="plant p4"></div>
+    <div class="plant p5"></div>
+    <canvas id="fc"></canvas>
+  </div>
+</div>
+
 <script>
-const ASSET_URL="{asset_url}";
 const SPRITE_URL="{sprite_url}";
 const AGENTS={agents_json};
 const cv=document.getElementById('fc');
 const ctx=cv.getContext('2d');
 ctx.imageSmoothingEnabled=false;
 
-cv.width=window.innerWidth||860;
-cv.height=Math.round(cv.width*0.62);
-window.addEventListener('resize',()=>{{
-  cv.width=window.innerWidth||860;
-  cv.height=Math.round(cv.width*0.62);
-}});
-
-// ── tile config ──
-// all_assets.png = 448x240, 16x16 per tile
-const T=16, S=3; // tile size, scale
-const TW=T*S;   // tile on screen = 48px
-
-// ── load images ──
-const assets=new Image();
-assets.crossOrigin='anonymous';
-assets.src=ASSET_URL;
-let assetsOK=false;
-assets.onload=()=>{{ assetsOK=true; console.log('assets loaded',assets.width,assets.height); }};
-assets.onerror=()=>console.error('assets failed');
+function resize(){{
+  const room=document.querySelector('.room');
+  cv.width=room.offsetWidth;
+  cv.height=room.offsetHeight;
+}}
+setTimeout(resize,100);
+window.addEventListener('resize',resize);
 
 const spr=new Image();
 spr.crossOrigin='anonymous';
 spr.src=SPRITE_URL;
 let sprOK=false, FW=0, FH=0;
-spr.onload=()=>{{
-  sprOK=true;
-  FW=Math.round(spr.width/12);
-  FH=spr.height;
-  console.log('sprite loaded',spr.width,spr.height,'frame',FW,FH);
-}};
+spr.onload=()=>{{sprOK=true;FW=Math.round(spr.width/12);FH=spr.height;}};
 
+const WALK=[8,9,10,11], STAND=8, S=3;
 let tick=0;
 
-// ── room layout ──
-const ROOM_COLS=16, ROOM_ROWS=12;
-function rx(){{ return Math.floor((cv.width - ROOM_COLS*TW)/2); }}
-function ry(){{ return Math.floor((cv.height - ROOM_ROWS*TW)/2); }}
-
-// draw tile from spritesheet
-function dt(srcX,srcY,dstX,dstY,w=1,h=1){{
-  if(!assetsOK) return;
-  ctx.drawImage(assets,
-    srcX*T, srcY*T, T*w, T*h,
-    rx()+dstX*TW, ry()+dstY*TW, TW*w, TW*h);
-}}
-
-// draw solid colored tile
-function fillTile(dstX,dstY,col,w=1,h=1){{
-  ctx.fillStyle=col;
-  ctx.fillRect(rx()+dstX*TW, ry()+dstY*TW, TW*w, TW*h);
-}}
-
-function drawRoom(){{
-  // ── floor ──
-  for(let x=0;x<ROOM_COLS;x++) for(let y=0;y<ROOM_ROWS;y++){{
-    ctx.fillStyle=(x+y)%2===0?'#c8a870':'#b89860';
-    ctx.fillRect(rx()+x*TW, ry()+y*TW, TW, TW);
-    // subtle grid
-    ctx.strokeStyle='rgba(0,0,0,0.08)';
-    ctx.lineWidth=1;
-    ctx.strokeRect(rx()+x*TW, ry()+y*TW, TW, TW);
-  }}
-
-  // ── walls ──
-  // top wall
-  ctx.fillStyle='#d8c8a8';
-  ctx.fillRect(rx(), ry()-TW, ROOM_COLS*TW, TW);
-  // left wall
-  ctx.fillRect(rx()-TW, ry(), TW, ROOM_ROWS*TW);
-  // wall top border
-  ctx.fillStyle='#6b5a3a';
-  ctx.fillRect(rx(), ry(), ROOM_COLS*TW, 4);
-  ctx.fillRect(rx(), ry(), 4, ROOM_ROWS*TW);
-  ctx.fillRect(rx(), ry()+ROOM_ROWS*TW-4, ROOM_COLS*TW, 4);
-  ctx.fillRect(rx()+ROOM_COLS*TW-4, ry(), 4, ROOM_ROWS*TW);
-
-  if(!assetsOK){{
-    // fallback: draw colored boxes if assets not loaded yet
-    ctx.fillStyle='#8B5E3C'; ctx.fillRect(rx()+TW,ry()+TW,TW*3,TW*2);
-    ctx.fillStyle='#8B5E3C'; ctx.fillRect(rx()+TW*5,ry()+TW,TW*3,TW*2);
-    ctx.fillStyle='#8B5E3C'; ctx.fillRect(rx()+TW*9,ry()+TW,TW*3,TW*2);
-    return;
-  }}
-
-  // ── DESKS: use col 0-5, row 0-3 from assets (brown L-desk) ──
-  // Top row desks
-  dt(0,0, 1,1, 4,3);   // big desk top-left area
-  dt(0,0, 6,1, 4,3);   // big desk top-mid
-  dt(0,0,11,1, 4,3);   // big desk top-right
-
-  // Middle row desks
-  dt(0,0, 1,5, 4,3);
-  dt(0,0, 6,5, 4,3);
-  dt(0,0,11,5, 4,3);
-
-  // Bottom row desks
-  dt(0,0, 1,9, 4,3);
-  dt(0,0, 6,9, 4,3);
-  dt(0,0,11,9, 4,3);
-
-  // ── COMPUTERS: col 7-8, row 0-2 ──
-  dt(7,0, 2,0, 2,2);
-  dt(7,0, 7,0, 2,2);
-  dt(7,0,12,0, 2,2);
-  dt(7,0, 2,4, 2,2);
-  dt(7,0, 7,4, 2,2);
-  dt(7,0,12,4, 2,2);
-  dt(7,0, 2,8, 2,2);
-  dt(7,0, 7,8, 2,2);
-  dt(7,0,12,8, 2,2);
-
-  // ── PLANTS: col 0-7, row 6-8 ──
-  dt(0,6, 0,0, 1,2);    // corner plant TL
-  dt(2,6,15,0, 1,2);    // corner plant TR
-  dt(4,6, 0,10,1,2);    // corner plant BL
-  dt(6,6,15,10,1,2);    // corner plant BR
-  dt(1,6, 5,0, 1,2);    // center top plant
-  dt(3,6,10,0, 1,2);
-  dt(5,6, 5,10,1,2);
-  dt(7,6,10,10,1,2);
-
-  // ── BOOKSHELF right wall: col 10-11, row 0-5 ──
-  dt(10,0,14,1, 2,5);
-  dt(10,0,14,6, 2,5);
-
-  // ── BOSS/chart board: col 17-20, row 3-5 ──
-  dt(17,3, 6,0, 4,2);
-
-  // ── water cooler: col 9, row 2-3 ──
-  dt(9,2,13,4, 1,2);
-
-  // ── misc desk items ──
-  dt(9,0, 3,2, 1,1);   // papers
-  dt(9,1, 4,2, 1,1);   // coffee
-  dt(9,0, 8,2, 1,1);
-  dt(9,1, 9,2, 1,1);
-  dt(9,0, 3,6, 1,1);
-  dt(9,1, 4,6, 1,1);
-
-  // ── trash bins ──
-  dt(13,6, 0,5, 1,1);
-  dt(13,6,15,5, 1,1);
-  dt(13,6, 0,11,1,1);
-  dt(13,6,15,11,1,1);
-
-  // ── ambient light ──
-  const grad=ctx.createRadialGradient(
-    rx()+ROOM_COLS*TW/2, ry()+ROOM_ROWS*TW/2, 10,
-    rx()+ROOM_COLS*TW/2, ry()+ROOM_ROWS*TW/2, ROOM_COLS*TW*0.6);
-  grad.addColorStop(0,'rgba(255,245,200,0.1)');
-  grad.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=grad;
-  ctx.fillRect(rx(),ry(),ROOM_COLS*TW,ROOM_ROWS*TW);
-}}
-
-// ── sprite helpers ──
-const WALK=[8,9,10,11], STAND=8;
-
-function drawSprite(px,py,frame,dir,tint){{
-  if(!sprOK||FW===0) return;
+function drawSprite(x,y,frame,dir,tint){{
+  if(!sprOK) return;
   const dw=FW*S, dh=FH*S;
   ctx.save();
-  if(dir<0){{ctx.translate(px+dw,py);ctx.scale(-1,1);ctx.drawImage(spr,frame*FW,0,FW,FH,0,0,dw,dh);}}
-  else ctx.drawImage(spr,frame*FW,0,FW,FH,px,py,dw,dh);
+  if(dir<0){{ctx.translate(x+dw,y);ctx.scale(-1,1);ctx.drawImage(spr,frame*FW,0,FW,FH,0,0,dw,dh);}}
+  else ctx.drawImage(spr,frame*FW,0,FW,FH,x,y,dw,dh);
   ctx.globalCompositeOperation='multiply';
-  ctx.globalAlpha=0.2;
+  ctx.globalAlpha=0.22;
   ctx.fillStyle=tint;
-  ctx.fillRect(dir<0?0:px,py,dw,dh);
+  ctx.fillRect(dir<0?0:x,y,dw,dh);
   ctx.globalCompositeOperation='source-over';
   ctx.globalAlpha=1;
   ctx.restore();
 }}
 
-function drawBubble(px,py,text,sig){{
+function drawBubble(cx,cy,text,sig){{
   const col=sig==='BULLISH'?'#00c853':sig==='BEARISH'?'#ff3131':'#ffd700';
-  ctx.font='5px "Press Start 2P",monospace';
+  ctx.font='bold 10px "Press Start 2P",monospace';
   const tw=ctx.measureText(text).width;
-  const bw=tw+14,bh=18,bx=px-bw/2,by=py-bh-10;
-  ctx.fillStyle='#fff';ctx.fillRect(bx-2,by-2,bw+4,bh+4);
+  const bw=tw+18,bh=22,bx=cx-bw/2,by=cy-bh-14;
+  ctx.fillStyle='#fff';ctx.fillRect(bx-3,by-3,bw+6,bh+6);
   ctx.fillStyle='#000';ctx.fillRect(bx,by,bw,bh);
-  ctx.fillStyle=col;ctx.fillRect(bx,by,bw,3);
-  ctx.fillStyle='#fff';ctx.font='5px "Press Start 2P",monospace';
-  ctx.fillText(text,bx+7,by+13);
-  ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(px-4,by+bh+2);ctx.lineTo(px+4,by+bh+2);ctx.lineTo(px,by+bh+10);ctx.fill();
-  ctx.fillStyle='#000';ctx.beginPath();ctx.moveTo(px-2,by+bh+2);ctx.lineTo(px+2,by+bh+2);ctx.lineTo(px,by+bh+8);ctx.fill();
+  ctx.fillStyle=col;ctx.fillRect(bx,by,bw,4);
+  ctx.fillStyle='#fff';
+  ctx.fillText(text,bx+9,by+16);
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(cx-5,by+bh+3);ctx.lineTo(cx+5,by+bh+3);ctx.lineTo(cx,by+bh+12);ctx.fill();
+  ctx.fillStyle='#000';ctx.beginPath();ctx.moveTo(cx-3,by+bh+3);ctx.lineTo(cx+3,by+bh+3);ctx.lineTo(cx,by+bh+10);ctx.fill();
 }}
 
 function drawAgent(a){{
-  if(!sprOK||FW===0) return;
-  const dw=FW*S,dh=FH*S;
-  const px=rx()+a.tx*TW+(TW-dw)/2;
-  const py=ry()+a.ty*TW+(TW-dh);
+  if(!sprOK) return;
+  const dw=FW*S, dh=FH*S;
+  const x=a.px*cv.width - dw/2;
+  const y=a.py*cv.height - dh/2;
   const frame=a.walking?WALK[Math.floor(a.fr/6)%4]:STAND;
-  ctx.fillStyle='rgba(0,0,0,0.15)';
-  ctx.beginPath();ctx.ellipse(px+dw/2,py+dh,dw/2.5,3,0,0,Math.PI*2);ctx.fill();
-  drawSprite(px,py,frame,a.dir,a.tint);
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.beginPath();ctx.ellipse(x+dw/2,y+dh,dw/2.5,5,0,0,Math.PI*2);ctx.fill();
+  drawSprite(x,y,frame,a.dir,a.tint);
+  // pair label
   const sc=a.signal==='BULLISH'?'#00c853':a.signal==='BEARISH'?'#ff3131':'#ffd700';
-  ctx.fillStyle='rgba(0,0,0,0.8)';ctx.fillRect(px,py+dh+1,dw,10);
-  ctx.fillStyle=sc;ctx.font='5px monospace';ctx.textAlign='center';
-  ctx.fillText(a.pair,px+dw/2,py+dh+9);ctx.textAlign='left';
-  const mi=Math.floor((tick+AGENTS.indexOf(a)*35)/90)%a.msgs.length;
-  drawBubble(px+dw/2,py,a.msgs[mi],a.signal);
+  ctx.fillStyle='rgba(0,0,0,0.9)';ctx.fillRect(x,y+dh+3,dw,14);
+  ctx.fillStyle=sc;ctx.font='bold 9px monospace';ctx.textAlign='center';
+  ctx.fillText(a.pair,x+dw/2,y+dh+13);ctx.textAlign='left';
+  // bubble
+  const mi=Math.floor((tick+AGENTS.indexOf(a)*35)/100)%a.msgs.length;
+  drawBubble(x+dw/2,y,a.msgs[mi],a.signal);
 }}
 
 function updateAgents(){{
   AGENTS.forEach(a=>{{
     if(a.walking){{
-      a.tx+=a.dir*0.025; a.fr+=1;
-      if(a.tx>ROOM_COLS-2){{a.tx=ROOM_COLS-2;a.dir=-1;}}
-      if(a.tx<1){{a.tx=1;a.dir=1;}}
+      a.px+=a.dir*0.0015;
+      a.fr+=1;
+      if(a.px>0.92){{a.px=0.92;a.dir=-1;}}
+      if(a.px<0.05){{a.px=0.05;a.dir=1;}}
     }}
     if(Math.random()<0.003){{
       a.walking=false;
@@ -363,31 +285,20 @@ function updateAgents(){{
 function loop(){{
   tick++;
   ctx.clearRect(0,0,cv.width,cv.height);
-  ctx.fillStyle='#1a1208';
-  ctx.fillRect(0,0,cv.width,cv.height);
-  drawRoom();
   updateAgents();
-  [...AGENTS].sort((a,b)=>a.ty-b.ty).forEach(a=>drawAgent(a));
-  const n=new Date();
-  const ts=n.getHours().toString().padStart(2,'0')+':'+
-           n.getMinutes().toString().padStart(2,'0')+':'+
-           n.getSeconds().toString().padStart(2,'0');
-  ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fillRect(cv.width-96,8,90,18);
-  ctx.fillStyle='#00ff41';ctx.font='8px "Press Start 2P",monospace';
-  ctx.fillText(ts,cv.width-90,21);
+  [...AGENTS].sort((a,b)=>a.py-b.py).forEach(a=>drawAgent(a));
   requestAnimationFrame(loop);
 }}
 loop();
 </script>
 """
 
-ASSET_URL  = "https://raw.githubusercontent.com/pech3930/forex-bot/main/all_assets.png"
 SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronaut.png"
 
 if not run_btn:
     default_agents=build_agents(
         selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],{})
-    st.components.v1.html(render_canvas(default_agents,ASSET_URL,SPRITE_URL),height=620,scrolling=False)
+    st.components.v1.html(render_canvas(default_agents,SPRITE_URL),height=620,scrolling=False)
     st.markdown("""
     <div style="text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#333;padding:8px">
     ← PRESS ANALYZE NOW TO START
@@ -401,14 +312,14 @@ else:
         ph=st.empty()
         loading=build_agents(selected_pairs,{p:("NEUTRAL","Loading...") for p in selected_pairs})
         for a in loading: a["msgs"]=["Fetching!","Reading...","Analyzing!","Working..."]
-        ph.components.v1.html(render_canvas(loading,ASSET_URL,SPRITE_URL),height=620,scrolling=False)
+        ph.components.v1.html(render_canvas(loading,SPRITE_URL),height=620,scrolling=False)
         with st.spinner(""):
             articles=fetch_news()
             raw=analyze(articles,selected_pairs,api_key)
             overview,signals,watch=parse_result(raw,selected_pairs)
         final=build_agents(selected_pairs,signals)
         ph.empty()
-        st.components.v1.html(render_canvas(final,ASSET_URL,SPRITE_URL),height=620,scrolling=False)
+        st.components.v1.html(render_canvas(final,SPRITE_URL),height=620,scrolling=False)
         cols=st.columns(len(selected_pairs))
         for i,(p,col) in enumerate(zip(selected_pairs,cols)):
             sig,reason=signals.get(p,("NEUTRAL","No data"))
