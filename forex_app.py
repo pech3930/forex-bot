@@ -82,10 +82,7 @@ def analyze(articles,pairs,key):
     news_text="\n\n".join(f"[{a['source']}] {a['title']}\n{a['summary']}" for a in articles)
     prompt=f"""คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์ตลาด Forex
 วิเคราะห์ข่าวและประเมินผลกระทบต่อ: {", ".join(pairs)}
-
-ข่าวสาร:
-{news_text}
-
+ข่าวสาร:\n{news_text}
 ตอบกลับในรูปแบบ JSON เท่านั้น:
 {{
   "overview": "<สรุป 2-3 ประโยคภาษาไทย>",
@@ -94,9 +91,7 @@ def analyze(articles,pairs,key):
   }},
   "watch": "<ประเด็นที่ต้องติดตาม>"
 }}"""
-    r=client.messages.create(
-        model="claude-3-5-sonnet-20241022",
-        max_tokens=1000,
+    r=client.messages.create(model="claude-3-5-sonnet-20241022",max_tokens=1000,
         messages=[{"role":"user","content":prompt}])
     return r.content[0].text
 
@@ -117,14 +112,13 @@ def parse_result(text,pairs):
 
 def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
-    # positions in tile coordinates (col, row) inside the office
-    positions=[(5,4),(9,4),(5,8),(9,8),(7,6),(3,6)]
+    positions=[(3,4),(7,4),(11,4),(3,8),(7,8),(11,8)]
     agents=[]
     for i,p in enumerate(pairs):
         sig,reason=signals.get(p,("NEUTRAL","Analyzing..."))
-        msgs={"BULLISH":[p+"!","▲ BUY!","Bullish!","Going UP!"],
-              "BEARISH":[p+"!","▼ SELL!","Bearish!","Going DOWN!"],
-              "NEUTRAL":[p,"◆ WAIT","Watching","No signal"]}.get(sig,["..."])
+        msgs={"BULLISH":[p+"!","▲ BUY!","Bullish!","UP!"],
+              "BEARISH":[p+"!","▼ SELL!","Bearish!","DOWN!"],
+              "NEUTRAL":[p,"◆ WAIT","Watch","..."]}.get(sig,["..."])
         tx,ty=positions[i%len(positions)]
         agents.append({"pair":p,"signal":sig,"reason":reason,
                        "tx":float(tx),"ty":float(ty),
@@ -148,180 +142,170 @@ const cv=document.getElementById('fc');
 const ctx=cv.getContext('2d');
 ctx.imageSmoothingEnabled=false;
 
-// ── sizing ──
-const TILE=16, SCALE=3, TS=TILE*SCALE; // each tile 16px * 3 = 48px on screen
-const COLS=16, ROWS=12; // room size in tiles
+cv.width=window.innerWidth||860;
+cv.height=Math.round(cv.width*0.62);
+window.addEventListener('resize',()=>{{
+  cv.width=window.innerWidth||860;
+  cv.height=Math.round(cv.width*0.62);
+}});
+
+// ── tile config ──
+// all_assets.png = 448x240, 16x16 per tile
+const T=16, S=3; // tile size, scale
+const TW=T*S;   // tile on screen = 48px
+
+// ── load images ──
+const assets=new Image();
+assets.crossOrigin='anonymous';
+assets.src=ASSET_URL;
+let assetsOK=false;
+assets.onload=()=>{{ assetsOK=true; console.log('assets loaded',assets.width,assets.height); }};
+assets.onerror=()=>console.error('assets failed');
+
+const spr=new Image();
+spr.crossOrigin='anonymous';
+spr.src=SPRITE_URL;
+let sprOK=false, FW=0, FH=0;
+spr.onload=()=>{{
+  sprOK=true;
+  FW=Math.round(spr.width/12);
+  FH=spr.height;
+  console.log('sprite loaded',spr.width,spr.height,'frame',FW,FH);
+}};
+
 let tick=0;
 
-function resize(){{
-  cv.width=window.innerWidth||860;
-  cv.height=Math.round(cv.width*0.65);
-}}
-resize();
-window.addEventListener('resize',resize);
+// ── room layout ──
+const ROOM_COLS=16, ROOM_ROWS=12;
+function rx(){{ return Math.floor((cv.width - ROOM_COLS*TW)/2); }}
+function ry(){{ return Math.floor((cv.height - ROOM_ROWS*TW)/2); }}
 
-// ── load assets ──
-const assets=new Image(); assets.crossOrigin='anonymous'; assets.src=ASSET_URL;
-const spr=new Image();    spr.crossOrigin='anonymous';    spr.src=SPRITE_URL;
-let assetsReady=false, spriteReady=false;
-assets.onload=()=>assetsReady=true;
-spr.onload=()=>spriteReady=true;
-
-// room offset to center it
-function roomX(){{ return Math.floor((cv.width - COLS*TS)/2); }}
-function roomY(){{ return Math.floor((cv.height - ROWS*TS)/2); }}
-
-// draw one tile from all_assets.png (448x240, 16x16 each => 28 cols x 15 rows)
-// sx,sy = tile col,row in the spritesheet
-function drawTile(sx,sy,dx,dy,w=1,h=1){{
-  if(!assetsReady) return;
-  ctx.drawImage(assets, sx*TILE, sy*TILE, TILE*w, TILE*h,
-                        roomX()+dx*TS, roomY()+dy*TS, TS*w, TS*h);
+// draw tile from spritesheet
+function dt(srcX,srcY,dstX,dstY,w=1,h=1){{
+  if(!assetsOK) return;
+  ctx.drawImage(assets,
+    srcX*T, srcY*T, T*w, T*h,
+    rx()+dstX*TW, ry()+dstY*TW, TW*w, TW*h);
 }}
 
-// ── floor & walls ──
-function drawFloor(){{
-  // floor color
-  ctx.fillStyle='#c8a87a';
-  ctx.fillRect(roomX(), roomY(), COLS*TS, ROWS*TS);
+// draw solid colored tile
+function fillTile(dstX,dstY,col,w=1,h=1){{
+  ctx.fillStyle=col;
+  ctx.fillRect(rx()+dstX*TW, ry()+dstY*TW, TW*w, TW*h);
+}}
 
-  // floor tile pattern
-  for(let x=0;x<COLS;x++) for(let y=0;y<ROWS;y++){{
-    if((x+y)%2===0){{
-      ctx.fillStyle='rgba(0,0,0,0.04)';
-      ctx.fillRect(roomX()+x*TS, roomY()+y*TS, TS, TS);
-    }}
+function drawRoom(){{
+  // ── floor ──
+  for(let x=0;x<ROOM_COLS;x++) for(let y=0;y<ROOM_ROWS;y++){{
+    ctx.fillStyle=(x+y)%2===0?'#c8a870':'#b89860';
+    ctx.fillRect(rx()+x*TW, ry()+y*TW, TW, TW);
+    // subtle grid
+    ctx.strokeStyle='rgba(0,0,0,0.08)';
+    ctx.lineWidth=1;
+    ctx.strokeRect(rx()+x*TW, ry()+y*TW, TW, TW);
   }}
 
-  // walls (top & left)
-  ctx.fillStyle='#d4c4a8';
-  ctx.fillRect(roomX(), roomY()-TS, COLS*TS, TS);     // top wall
-  ctx.fillRect(roomX()-TS, roomY(), TS, ROWS*TS);     // left wall
+  // ── walls ──
+  // top wall
+  ctx.fillStyle='#d8c8a8';
+  ctx.fillRect(rx(), ry()-TW, ROOM_COLS*TW, TW);
+  // left wall
+  ctx.fillRect(rx()-TW, ry(), TW, ROOM_ROWS*TW);
+  // wall top border
+  ctx.fillStyle='#6b5a3a';
+  ctx.fillRect(rx(), ry(), ROOM_COLS*TW, 4);
+  ctx.fillRect(rx(), ry(), 4, ROOM_ROWS*TW);
+  ctx.fillRect(rx(), ry()+ROOM_ROWS*TW-4, ROOM_COLS*TW, 4);
+  ctx.fillRect(rx()+ROOM_COLS*TW-4, ry(), 4, ROOM_ROWS*TW);
 
-  // wall border
-  ctx.fillStyle='#8B7355';
-  ctx.fillRect(roomX(), roomY(), COLS*TS, 3);         // top edge
-  ctx.fillRect(roomX(), roomY(), 3, ROWS*TS);         // left edge
-  ctx.fillRect(roomX(), roomY()+ROWS*TS-3, COLS*TS, 3); // bottom edge
-  ctx.fillRect(roomX()+COLS*TS-3, roomY(), 3, ROWS*TS); // right edge
+  if(!assetsOK){{
+    // fallback: draw colored boxes if assets not loaded yet
+    ctx.fillStyle='#8B5E3C'; ctx.fillRect(rx()+TW,ry()+TW,TW*3,TW*2);
+    ctx.fillStyle='#8B5E3C'; ctx.fillRect(rx()+TW*5,ry()+TW,TW*3,TW*2);
+    ctx.fillStyle='#8B5E3C'; ctx.fillRect(rx()+TW*9,ry()+TW,TW*3,TW*2);
+    return;
+  }}
 
-  // baseboard
-  ctx.fillStyle='#a08060';
-  ctx.fillRect(roomX(), roomY()+ROWS*TS-6, COLS*TS, 6);
-  ctx.fillRect(roomX()+COLS*TS-6, roomY(), 6, ROWS*TS);
-}}
+  // ── DESKS: use col 0-5, row 0-3 from assets (brown L-desk) ──
+  // Top row desks
+  dt(0,0, 1,1, 4,3);   // big desk top-left area
+  dt(0,0, 6,1, 4,3);   // big desk top-mid
+  dt(0,0,11,1, 4,3);   // big desk top-right
 
-// ── draw office furniture using asset tiles ──
-// all_assets.png layout (measured from image):
-// Row 0: floor tiles top-left area
-// Row 0-3 col 0-3: L-shaped desk top-left
-// Row 0-1 col 0-5: big desk top
-// Row 3-5 col 0-2: cabinet/shelf left
-// Row 6-8 col 0-2: small furniture
-// Row 0-2 col 7-9: computer setup
-// Row 3-5 col 7-10: misc items
-// Row 6-9 col 0-8: plants row
-// Row 0-5 col 10-17: various items right side
+  // Middle row desks
+  dt(0,0, 1,5, 4,3);
+  dt(0,0, 6,5, 4,3);
+  dt(0,0,11,5, 4,3);
 
-function drawFurniture(){{
-  if(!assetsReady) return;
+  // Bottom row desks
+  dt(0,0, 1,9, 4,3);
+  dt(0,0, 6,9, 4,3);
+  dt(0,0,11,9, 4,3);
 
-  // ── DESKS (top-left of asset = brown desk, 2x2 tiles) ──
-  // Desk 1 - top area
-  drawTile(0,0, 1,1, 2,2);   // brown desk top-left
-  drawTile(0,0, 4,1, 2,2);   // desk copy
+  // ── COMPUTERS: col 7-8, row 0-2 ──
+  dt(7,0, 2,0, 2,2);
+  dt(7,0, 7,0, 2,2);
+  dt(7,0,12,0, 2,2);
+  dt(7,0, 2,4, 2,2);
+  dt(7,0, 7,4, 2,2);
+  dt(7,0,12,4, 2,2);
+  dt(7,0, 2,8, 2,2);
+  dt(7,0, 7,8, 2,2);
+  dt(7,0,12,8, 2,2);
 
-  // Desk 2 - middle
-  drawTile(0,3, 1,5, 2,2);
-  drawTile(0,3, 4,5, 2,2);
-  drawTile(0,3, 7,5, 2,2);
+  // ── PLANTS: col 0-7, row 6-8 ──
+  dt(0,6, 0,0, 1,2);    // corner plant TL
+  dt(2,6,15,0, 1,2);    // corner plant TR
+  dt(4,6, 0,10,1,2);    // corner plant BL
+  dt(6,6,15,10,1,2);    // corner plant BR
+  dt(1,6, 5,0, 1,2);    // center top plant
+  dt(3,6,10,0, 1,2);
+  dt(5,6, 5,10,1,2);
+  dt(7,6,10,10,1,2);
 
-  // Desk 3 - bottom row
-  drawTile(0,0, 1,9, 2,2);
-  drawTile(0,0, 4,9, 2,2);
-  drawTile(0,0, 10,9, 2,2);
+  // ── BOOKSHELF right wall: col 10-11, row 0-5 ──
+  dt(10,0,14,1, 2,5);
+  dt(10,0,14,6, 2,5);
 
-  // ── COMPUTERS on desks (col 7-9, row 0-2 in assets) ──
-  drawTile(7,0, 2,0, 2,2);   // computer on desk1
-  drawTile(7,0, 5,0, 2,2);   // computer on desk2
-  drawTile(7,0, 2,4, 2,2);   // computer on desk3
-  drawTile(7,0, 5,4, 2,2);
-  drawTile(7,0, 8,4, 2,2);
-  drawTile(7,0, 2,8, 2,2);
-  drawTile(7,0, 5,8, 2,2);
-  drawTile(7,0,11,8, 2,2);
+  // ── BOSS/chart board: col 17-20, row 3-5 ──
+  dt(17,3, 6,0, 4,2);
 
-  // ── CHAIRS (col 13-14, row 0-2 in assets) ──
-  drawTile(13,0, 2,3, 1,2);
-  drawTile(13,0, 5,3, 1,2);
-  drawTile(13,0, 2,7, 1,2);
-  drawTile(13,0, 5,7, 1,2);
-  drawTile(13,0, 8,7, 1,2);
-  drawTile(13,0, 2,11,1,2);
-  drawTile(13,0, 5,11,1,2);
-  drawTile(13,0,11,11,1,2);
+  // ── water cooler: col 9, row 2-3 ──
+  dt(9,2,13,4, 1,2);
 
-  // ── PLANTS row (row 6-8 col 0-8 in assets) ──
-  drawTile(0,6,  0,0, 1,2);   // plant corner top-left
-  drawTile(2,6, 15,0, 1,2);   // plant corner top-right
-  drawTile(4,6,  0,10,1,2);   // plant corner bottom-left
-  drawTile(6,6, 15,10,1,2);   // plant corner bottom-right
-  drawTile(1,6,  7,0, 1,2);   // desk plant center top
-  drawTile(3,6, 13,5, 1,2);   // plant right side
+  // ── misc desk items ──
+  dt(9,0, 3,2, 1,1);   // papers
+  dt(9,1, 4,2, 1,1);   // coffee
+  dt(9,0, 8,2, 1,1);
+  dt(9,1, 9,2, 1,1);
+  dt(9,0, 3,6, 1,1);
+  dt(9,1, 4,6, 1,1);
 
-  // ── BOOKSHELF / cabinet right wall ──
-  drawTile(10,0, 13,0, 2,3);  // bookshelf right top
-  drawTile(10,0, 13,3, 2,3);  // bookshelf right bottom
+  // ── trash bins ──
+  dt(13,6, 0,5, 1,1);
+  dt(13,6,15,5, 1,1);
+  dt(13,6, 0,11,1,1);
+  dt(13,6,15,11,1,1);
 
-  // ── whiteboard / BOSS sign ──
-  drawTile(17,3,  8,0, 2,1);  // BOSS board
-  drawTile(18,3, 10,0, 2,2);  // chart board
-
-  // ── misc items on desks ──
-  drawTile(9,0,  3,1, 1,1);   // papers
-  drawTile(9,1,  6,1, 1,1);   // coffee
-  drawTile(9,0,  9,5, 1,1);   // papers
-  drawTile(9,1,  3,5, 1,1);   // coffee
-
-  // ── water cooler ──
-  drawTile(9,2, 12,4, 1,2);
-
-  // ── trash bin ──
-  drawTile(13,6, 14,10,1,1);
-  drawTile(13,6,  0,4, 1,1);
-}}
-
-// ── ambient light overlay ──
-function drawLight(){{
-  const cx=roomX()+cv.width*0.5-roomX();
-  const cy=roomY()+ROWS*TS*0.4;
-  const grad=ctx.createRadialGradient(roomX()+COLS*TS/2,roomY()+ROWS*TS/2,20,
-                                       roomX()+COLS*TS/2,roomY()+ROWS*TS/2,COLS*TS*0.7);
-  grad.addColorStop(0,'rgba(255,240,200,0.08)');
-  grad.addColorStop(1,'rgba(255,240,200,0)');
+  // ── ambient light ──
+  const grad=ctx.createRadialGradient(
+    rx()+ROOM_COLS*TW/2, ry()+ROOM_ROWS*TW/2, 10,
+    rx()+ROOM_COLS*TW/2, ry()+ROOM_ROWS*TW/2, ROOM_COLS*TW*0.6);
+  grad.addColorStop(0,'rgba(255,245,200,0.1)');
+  grad.addColorStop(1,'rgba(0,0,0,0)');
   ctx.fillStyle=grad;
-  ctx.fillRect(roomX(),roomY(),COLS*TS,ROWS*TS);
+  ctx.fillRect(rx(),ry(),ROOM_COLS*TW,ROOM_ROWS*TW);
 }}
 
-// ── Astronaut sprite ──
-const WALK_FRAMES=[8,9,10,11];
-const STAND_FRAME=8;
-const TOTAL_FRAMES=12;
-let FW=0,FH=0;
+// ── sprite helpers ──
+const WALK=[8,9,10,11], STAND=8;
 
-function getSpriteSize(){{
-  if(!spriteReady||spr.width===0) return {{fw:16,fh:24}};
-  if(FW===0){{FW=Math.round(spr.width/TOTAL_FRAMES);FH=spr.height;}}
-  return {{fw:FW,fh:FH}};
-}}
-
-function drawSprite(px,py,frameIdx,dir,tint){{
-  const {{fw,fh}}=getSpriteSize();
-  if(!spriteReady||fw===0) return;
-  const dw=fw*SCALE,dh=fh*SCALE;
+function drawSprite(px,py,frame,dir,tint){{
+  if(!sprOK||FW===0) return;
+  const dw=FW*S, dh=FH*S;
   ctx.save();
-  if(dir<0){{ctx.translate(px+dw,py);ctx.scale(-1,1);ctx.drawImage(spr,frameIdx*fw,0,fw,fh,0,0,dw,dh);}}
-  else ctx.drawImage(spr,frameIdx*fw,0,fw,fh,px,py,dw,dh);
+  if(dir<0){{ctx.translate(px+dw,py);ctx.scale(-1,1);ctx.drawImage(spr,frame*FW,0,FW,FH,0,0,dw,dh);}}
+  else ctx.drawImage(spr,frame*FW,0,FW,FH,px,py,dw,dh);
   ctx.globalCompositeOperation='multiply';
   ctx.globalAlpha=0.2;
   ctx.fillStyle=tint;
@@ -331,13 +315,11 @@ function drawSprite(px,py,frameIdx,dir,tint){{
   ctx.restore();
 }}
 
-// ── Speech bubble ──
 function drawBubble(px,py,text,sig){{
   const col=sig==='BULLISH'?'#00c853':sig==='BEARISH'?'#ff3131':'#ffd700';
   ctx.font='5px "Press Start 2P",monospace';
   const tw=ctx.measureText(text).width;
-  const bw=tw+14,bh=18;
-  const bx=px-bw/2,by=py-bh-10;
+  const bw=tw+14,bh=18,bx=px-bw/2,by=py-bh-10;
   ctx.fillStyle='#fff';ctx.fillRect(bx-2,by-2,bw+4,bh+4);
   ctx.fillStyle='#000';ctx.fillRect(bx,by,bw,bh);
   ctx.fillStyle=col;ctx.fillRect(bx,by,bw,3);
@@ -347,62 +329,45 @@ function drawBubble(px,py,text,sig){{
   ctx.fillStyle='#000';ctx.beginPath();ctx.moveTo(px-2,by+bh+2);ctx.lineTo(px+2,by+bh+2);ctx.lineTo(px,by+bh+8);ctx.fill();
 }}
 
-// ── Draw agent ──
 function drawAgent(a){{
-  const {{fw,fh}}=getSpriteSize();
-  const dw=fw*SCALE,dh=fh*SCALE;
-  // convert tile position to screen
-  const px=roomX()+a.tx*TS + (TS-dw)/2;
-  const py=roomY()+a.ty*TS + (TS-dh);
-  const frameIdx=a.walking?WALK_FRAMES[Math.floor(a.fr/6)%4]:STAND_FRAME;
-  // shadow
-  ctx.fillStyle='rgba(0,0,0,0.18)';
-  ctx.beginPath();ctx.ellipse(px+dw/2,py+dh,dw/2.5,4,0,0,Math.PI*2);ctx.fill();
-  drawSprite(px,py,frameIdx,a.dir,a.tint);
-  // pair label
+  if(!sprOK||FW===0) return;
+  const dw=FW*S,dh=FH*S;
+  const px=rx()+a.tx*TW+(TW-dw)/2;
+  const py=ry()+a.ty*TW+(TW-dh);
+  const frame=a.walking?WALK[Math.floor(a.fr/6)%4]:STAND;
+  ctx.fillStyle='rgba(0,0,0,0.15)';
+  ctx.beginPath();ctx.ellipse(px+dw/2,py+dh,dw/2.5,3,0,0,Math.PI*2);ctx.fill();
+  drawSprite(px,py,frame,a.dir,a.tint);
   const sc=a.signal==='BULLISH'?'#00c853':a.signal==='BEARISH'?'#ff3131':'#ffd700';
-  ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fillRect(px,py+dh+1,dw,11);
+  ctx.fillStyle='rgba(0,0,0,0.8)';ctx.fillRect(px,py+dh+1,dw,10);
   ctx.fillStyle=sc;ctx.font='5px monospace';ctx.textAlign='center';
   ctx.fillText(a.pair,px+dw/2,py+dh+9);ctx.textAlign='left';
-  // bubble
-  const msgIdx=Math.floor((tick+AGENTS.indexOf(a)*35)/90)%a.msgs.length;
-  drawBubble(px+dw/2,py-2,a.msgs[msgIdx],a.signal);
+  const mi=Math.floor((tick+AGENTS.indexOf(a)*35)/90)%a.msgs.length;
+  drawBubble(px+dw/2,py,a.msgs[mi],a.signal);
 }}
 
-// ── Update agents (walk within room) ──
 function updateAgents(){{
   AGENTS.forEach(a=>{{
     if(a.walking){{
-      a.tx+=a.dir*0.03;
-      a.fr+=1;
-      if(a.tx>COLS-2){{a.tx=COLS-2;a.dir=-1;}}
+      a.tx+=a.dir*0.025; a.fr+=1;
+      if(a.tx>ROOM_COLS-2){{a.tx=ROOM_COLS-2;a.dir=-1;}}
       if(a.tx<1){{a.tx=1;a.dir=1;}}
     }}
     if(Math.random()<0.003){{
       a.walking=false;
-      setTimeout(()=>a.walking=true,1500+Math.random()*2500);
+      setTimeout(()=>a.walking=true,1500+Math.random()*2000);
     }}
   }});
 }}
 
-// ── Main loop ──
 function loop(){{
   tick++;
   ctx.clearRect(0,0,cv.width,cv.height);
-
-  // background
   ctx.fillStyle='#1a1208';
   ctx.fillRect(0,0,cv.width,cv.height);
-
-  drawFloor();
-  drawFurniture();
-  drawLight();
-
+  drawRoom();
   updateAgents();
-  // depth sort by ty
   [...AGENTS].sort((a,b)=>a.ty-b.ty).forEach(a=>drawAgent(a));
-
-  // clock
   const n=new Date();
   const ts=n.getHours().toString().padStart(2,'0')+':'+
            n.getMinutes().toString().padStart(2,'0')+':'+
@@ -410,7 +375,6 @@ function loop(){{
   ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fillRect(cv.width-96,8,90,18);
   ctx.fillStyle='#00ff41';ctx.font='8px "Press Start 2P",monospace';
   ctx.fillText(ts,cv.width-90,21);
-
   requestAnimationFrame(loop);
 }}
 loop();
@@ -438,16 +402,13 @@ else:
         loading=build_agents(selected_pairs,{p:("NEUTRAL","Loading...") for p in selected_pairs})
         for a in loading: a["msgs"]=["Fetching!","Reading...","Analyzing!","Working..."]
         ph.components.v1.html(render_canvas(loading,ASSET_URL,SPRITE_URL),height=620,scrolling=False)
-
         with st.spinner(""):
             articles=fetch_news()
             raw=analyze(articles,selected_pairs,api_key)
             overview,signals,watch=parse_result(raw,selected_pairs)
-
         final=build_agents(selected_pairs,signals)
         ph.empty()
         st.components.v1.html(render_canvas(final,ASSET_URL,SPRITE_URL),height=620,scrolling=False)
-
         cols=st.columns(len(selected_pairs))
         for i,(p,col) in enumerate(zip(selected_pairs,cols)):
             sig,reason=signals.get(p,("NEUTRAL","No data"))
@@ -460,21 +421,18 @@ else:
                   <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:{sc};border:1px solid {sc};padding:2px 4px;display:inline-block">{arrow} {sig}</div>
                   <div style="font-family:'Press Start 2P',monospace;font-size:5px;color:#555;margin-top:4px;line-height:1.6">{reason[:45]}</div>
                 </div>""", unsafe_allow_html=True)
-
         if overview:
             st.markdown(f"""
             <div style="background:#0d0d1a;border:2px solid #4a9eff;padding:10px;margin-top:4px">
               <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4a9eff;margin-bottom:6px">📋 OVERVIEW</div>
               <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#ccc;line-height:1.9">{overview}</div>
             </div>""", unsafe_allow_html=True)
-
         if watch:
             st.markdown(f"""
             <div style="background:#0d0d1a;border:2px solid #ffd700;padding:8px;margin-top:6px">
               <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;margin-bottom:4px">⚠ WATCH</div>
               <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#aaa;line-height:1.8">{watch}</div>
             </div>""", unsafe_allow_html=True)
-
         st.markdown("""
         <div style="border:2px dashed #ff3131;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:6px;color:#ff3131;margin-top:8px">
         ⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY
