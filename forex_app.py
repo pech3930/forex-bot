@@ -111,13 +111,13 @@ def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
     # fixed positions: agents stand at their desk (measured from office_bg.png)
     # (x%, y%) — percentage of background image
-    desk_positions=[
-        (0.22, 0.52),  # desk 1: front-left desk (near window)
-        (0.38, 0.48),  # desk 2: back-left desk (near "EAT SLEEP CODE")
-        (0.52, 0.58),  # desk 3: center-front desk
-        (0.62, 0.52),  # desk 4: center-back desk
-        (0.78, 0.48),  # desk 5: right desk (near whiteboard)
-        (0.85, 0.55),  # desk 6: far-right desk
+desk_positions=[
+        (0.28, 0.47),  # เก้าอี้ 1: ซ้ายบน หน้าโต๊ะติดหน้าต่าง
+        (0.38, 0.55),  # เก้าอี้ 2: กลางซ้ายบน
+        (0.48, 0.62),  # เก้าอี้ 3: กลางซ้ายล่าง
+        (0.58, 0.55),  # เก้าอี้ 4: กลางขวาบน
+        (0.67, 0.48),  # เก้าอี้ 5: กลางขวา
+        (0.82, 0.58),  # เก้าอี้ 6: ขวาล่าง หน้า whiteboard
     ]
     agents=[]
     for i,p in enumerate(pairs):
