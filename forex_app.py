@@ -198,10 +198,7 @@ function drawSprite(x,y,frame,dir,tint){{
   ctx.save();
   if(dir<0){{ctx.translate(x+dw,y);ctx.scale(-1,1);ctx.drawImage(spr,frame*FW,0,FW,FH,0,0,dw,dh);}}
   else ctx.drawImage(spr,frame*FW,0,FW,FH,x,y,dw,dh);
-  ctx.globalCompositeOperation='multiply';
-  ctx.globalAlpha=0.22;
-  ctx.fillStyle=tint;
-  ctx.fillRect(dir<0?0:x,y,dw,dh);
+ 
   ctx.globalCompositeOperation='source-over';
   ctx.globalAlpha=1;
   ctx.restore();
