@@ -111,7 +111,7 @@ def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
     # fixed positions: agents stand at their desk (measured from office_bg.png)
     # (x%, y%) — percentage of background image
- desk_positions=[
+    desk_positions=[
         (0.28, 0.47),  # เก้าอี้ 1: ซ้ายบน หน้าโต๊ะติดหน้าต่าง
         (0.38, 0.55),  # เก้าอี้ 2: กลางซ้ายบน
         (0.48, 0.62),  # เก้าอี้ 3: กลางซ้ายล่าง
