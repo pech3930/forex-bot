@@ -131,7 +131,7 @@ def render_canvas(agents, bg_url, sprite_url):
 html,body{{margin:0;padding:0;overflow:hidden}}
 .scene{{position:relative;width:100%;height:600px;background:#0a0a14}}
 .bg{{position:absolute;top:0;left:0;width:100%;height:100%;
-  background:url('{bg_url}') center/cover no-repeat}}
+  background:url('{bg_url}') center/contain no-repeat}}
 canvas{{position:absolute;top:0;left:0;width:100%;height:100%}}
 </style>
 <div class="scene">
