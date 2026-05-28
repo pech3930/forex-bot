@@ -112,7 +112,7 @@ def build_agents(pairs,signals):
     # fixed positions: agents stand at their desk (measured from office_bg.png)
     # (x%, y%) — percentage of background image
     desk_positions=[
-        (0.34, 0.58),  # เก้าอี้ 1: ซ้ายบน
+        (0.34, 0.65),  # เก้าอี้ 1: ซ้ายบน
         (0.51, 0.54),  # เก้าอี้ 2: กลางบน
         (0.80, 0.72),  # เก้าอี้ 3: ขวาล่าง ใกล้ตู้น้ำ
         (0.62, 0.90),  # เก้าอี้ 4: กลางล่างสุด
