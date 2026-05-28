@@ -132,6 +132,7 @@ def build_agents(pairs,signals):
                        "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*20,
                        "walking":True,"dir":1 if i%2==0 else -1})
     return agents
+  
 def render_canvas(agents, bg_url, sprite_url):
     agents_json=str(agents).replace("True","true").replace("False","false").replace("'",'"')
     return f"""
