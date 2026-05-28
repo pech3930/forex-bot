@@ -111,17 +111,13 @@ def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
     # patrol paths: each agent walks left-right within their desk area
     # format: (startX%, endX%, Y%) — percentage of background image area
-    patrols=def build_agents(pairs,signals):
-    tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
-    # fixed positions: agents stand at their desk (measured from office_bg.png)
-    # (x%, y%) — percentage of background image
-    desk_positions=[
-        (0.22, 0.52),  # desk 1: front-left desk (near window)
-        (0.38, 0.48),  # desk 2: back-left desk (near "EAT SLEEP CODE")
-        (0.52, 0.58),  # desk 3: center-front desk
-        (0.62, 0.52),  # desk 4: center-back desk
-        (0.78, 0.48),  # desk 5: right desk (near whiteboard)
-        (0.85, 0.55),  # desk 6: far-right desk
+    patrols=[
+        (0.15,0.30,0.65),  # desk 1 - front left
+        (0.30,0.48,0.72),  # desk 2 - front center-left
+        (0.48,0.62,0.78),  # desk 3 - front center
+        (0.62,0.75,0.55),  # desk 4 - back right
+        (0.75,0.88,0.62),  # desk 5 - right side
+        (0.20,0.40,0.80),  # extra
     ]
     agents=[]
     for i,p in enumerate(pairs):
@@ -129,10 +125,11 @@ def build_agents(pairs,signals):
         msgs={"BULLISH":[p+"!","▲ BUY!","Bullish!","UP!"],
               "BEARISH":[p+"!","▼ SELL!","Bearish!","DOWN!"],
               "NEUTRAL":[p,"◆ WAIT","Watch","..."]}.get(sig,["..."])
-        dx,dy=desk_positions[i%len(desk_positions)]
+        patrol=patrols[i%len(patrols)]
+        startX=(patrol[0]+patrol[1])/2  # start in middle of patrol
         agents.append({"pair":p,"signal":sig,"reason":reason,
-                       "px":dx,"py":dy,
-                       "minX":dx-0.03,"maxX":dx+0.03,
+                       "px":startX,"py":patrol[2],
+                       "minX":patrol[0],"maxX":patrol[1],
                        "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*20,
                        "walking":True,"dir":1 if i%2==0 else -1})
     return agents
