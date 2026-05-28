@@ -11,8 +11,8 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;image-rendering:pixelated}
-html,body,[class*="css"]{font-family:'Press Start 2P',monospace;background:#1a1a2e;color:#e0e0e0}
-.stApp{background:#1a1a2e}
+html,body,[class*="css"]{font-family:'Press Start 2P',monospace;background:#0a0a14;color:#e0e0e0}
+.stApp{background:#0a0a14}
 .block-container{padding:0.5rem 1rem!important}
 .stButton>button{font-family:'Press Start 2P',monospace!important;font-size:8px!important;
   background:#4a9eff!important;color:#000!important;border:none!important;border-radius:0!important;
@@ -109,91 +109,35 @@ def parse_result(text,pairs):
 
 def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
-    # x positions across the room (in % of room width)
-    positions_x=[0.2,0.4,0.6,0.8,0.3,0.7]
-    y_pos=0.55  # walk on floor level
+    # positions (% of room) — placed near desks in the background image
+    positions=[(0.18,0.58),(0.38,0.62),(0.55,0.68),(0.72,0.58),(0.85,0.65),(0.30,0.72)]
     agents=[]
     for i,p in enumerate(pairs):
         sig,reason=signals.get(p,("NEUTRAL","Analyzing..."))
         msgs={"BULLISH":[p+"!","▲ BUY!","Bullish!","UP!"],
               "BEARISH":[p+"!","▼ SELL!","Bearish!","DOWN!"],
               "NEUTRAL":[p,"◆ WAIT","Watch","..."]}.get(sig,["..."])
+        px,py=positions[i%len(positions)]
         agents.append({"pair":p,"signal":sig,"reason":reason,
-                       "px":positions_x[i%len(positions_x)],"py":y_pos,
+                       "px":px,"py":py,
                        "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*20,
                        "walking":True,"dir":1 if i%2==0 else -1})
     return agents
 
-def render_canvas(agents, sprite_url):
+def render_canvas(agents, bg_url, sprite_url):
     agents_json=str(agents).replace("True","true").replace("False","false").replace("'",'"')
     return f"""
 <style>
-html,body{{margin:0;padding:0;background:#1a1a2e;overflow:hidden}}
-.scene{{position:relative;width:100%;height:600px;background:#2a1a0e;overflow:hidden}}
-.room{{position:absolute;left:50%;top:0;transform:translateX(-50%);width:90%;max-width:1100px;height:100%}}
-.floor{{position:absolute;left:0;right:0;top:30%;bottom:0;
-  background:repeating-linear-gradient(90deg,#c8a870 0px,#c8a870 60px,#b89860 60px,#b89860 120px);
-  border-top:6px solid #6b4a2a}}
-.wall{{position:absolute;left:0;right:0;top:0;height:30%;
-  background:linear-gradient(180deg,#3a2a1a 0%,#4a3528 100%)}}
-.window{{position:absolute;top:8%;width:14%;height:18%;
-  background:linear-gradient(180deg,#5a8acc 0%,#3a6aac 100%);
-  border:4px solid #2a1a0e;box-shadow:inset 0 0 0 2px #87ceeb}}
-.window::before,.window::after{{content:'';position:absolute;background:#2a1a0e}}
-.window::before{{left:50%;top:0;bottom:0;width:3px;transform:translateX(-50%)}}
-.window::after{{top:50%;left:0;right:0;height:3px;transform:translateY(-50%)}}
-.w1{{left:8%}} .w2{{left:30%}} .w3{{left:52%}} .w4{{left:74%}}
-.desk{{position:absolute;width:130px;height:60px;background:#8B5E3C;
-  border:3px solid #5a3a1a;border-radius:4px}}
-.desk::before{{content:'';position:absolute;left:8px;top:-32px;width:50px;height:36px;
-  background:#1a1a2e;border:3px solid #333;border-radius:3px}}
-.desk::after{{content:'';position:absolute;left:13px;top:-26px;width:40px;height:25px;
-  background:#0a4a2e}}
-.d1{{left:5%;bottom:8%}} .d2{{left:30%;bottom:8%}} .d3{{left:55%;bottom:8%}} .d4{{left:80%;bottom:8%}}
-.plant{{position:absolute;width:30px;height:50px;bottom:8%}}
-.plant::before{{content:'';position:absolute;bottom:0;left:5px;width:20px;height:20px;
-  background:#8B4513;border:2px solid #5a3010;border-radius:3px}}
-.plant::after{{content:'🌿';position:absolute;bottom:18px;left:0;font-size:30px;line-height:1}}
-.p1{{left:1%}} .p2{{left:96%}} .p3{{left:22%}} .p4{{left:48%}} .p5{{left:72%}}
-.board{{position:absolute;background:#f5f5ee;border:4px solid #6b4a2a;
-  width:90px;height:60px;top:6%;color:#c0392b;font-family:monospace;font-size:8px;
-  padding:4px;display:flex;flex-direction:column;justify-content:space-around}}
-.b1{{left:18%}} .b2{{right:18%}}
-.board div{{display:flex;align-items:center;gap:3px}}
-.board span{{display:inline-block;width:30px;height:3px}}
-canvas{{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}}
+html,body{{margin:0;padding:0;overflow:hidden}}
+.scene{{position:relative;width:100%;padding-top:56.25%;background:#0a0a14}}
+.bg{{position:absolute;top:0;left:0;width:100%;height:100%;
+  background:url('{bg_url}') center/cover no-repeat}}
+canvas{{position:absolute;top:0;left:0;width:100%;height:100%}}
 </style>
 <div class="scene">
-  <div class="room">
-    <div class="wall"></div>
-    <div class="window w1"></div>
-    <div class="window w2"></div>
-    <div class="window w3"></div>
-    <div class="window w4"></div>
-    <div class="floor"></div>
-    <div class="board b1">
-      <div>BUY <span style="background:#00c853"></span></div>
-      <div>SELL <span style="background:#ff3131"></span></div>
-      <div>HOLD <span style="background:#ffd700"></span></div>
-    </div>
-    <div class="board b2">
-      <div style="color:#4a9eff;font-weight:bold">SIGNALS</div>
-      <div>EUR <span style="background:#00c853"></span></div>
-      <div>USD <span style="background:#ffd700"></span></div>
-    </div>
-    <div class="desk d1"></div>
-    <div class="desk d2"></div>
-    <div class="desk d3"></div>
-    <div class="desk d4"></div>
-    <div class="plant p1"></div>
-    <div class="plant p2"></div>
-    <div class="plant p3"></div>
-    <div class="plant p4"></div>
-    <div class="plant p5"></div>
-    <canvas id="fc"></canvas>
-  </div>
+  <div class="bg"></div>
+  <canvas id="fc"></canvas>
 </div>
-
 <script>
 const SPRITE_URL="{sprite_url}";
 const AGENTS={agents_json};
@@ -202,11 +146,11 @@ const ctx=cv.getContext('2d');
 ctx.imageSmoothingEnabled=false;
 
 function resize(){{
-  const room=document.querySelector('.room');
-  cv.width=room.offsetWidth;
-  cv.height=room.offsetHeight;
+  const scene=document.querySelector('.scene');
+  cv.width=scene.offsetWidth;
+  cv.height=scene.offsetHeight;
 }}
-setTimeout(resize,100);
+setTimeout(resize,200);
 window.addEventListener('resize',resize);
 
 const spr=new Image();
@@ -234,50 +178,61 @@ function drawSprite(x,y,frame,dir,tint){{
 }}
 
 function drawBubble(cx,cy,text,sig){{
-  const col=sig==='BULLISH'?'#00c853':sig==='BEARISH'?'#ff3131':'#ffd700';
-  ctx.font='bold 10px "Press Start 2P",monospace';
+  const col=sig==='BULLISH'?'#00ff41':sig==='BEARISH'?'#ff3131':'#ffd700';
+  ctx.font='bold 9px "Press Start 2P",monospace';
   const tw=ctx.measureText(text).width;
-  const bw=tw+18,bh=22,bx=cx-bw/2,by=cy-bh-14;
-  ctx.fillStyle='#fff';ctx.fillRect(bx-3,by-3,bw+6,bh+6);
+  const bw=tw+16,bh=22,bx=cx-bw/2,by=cy-bh-12;
+  // white border
+  ctx.fillStyle='#fff';ctx.fillRect(bx-2,by-2,bw+4,bh+4);
+  // black bg
   ctx.fillStyle='#000';ctx.fillRect(bx,by,bw,bh);
+  // colored top stripe
   ctx.fillStyle=col;ctx.fillRect(bx,by,bw,4);
+  // text
+  ctx.fillStyle='#fff';ctx.fillText(text,bx+8,by+16);
+  // tail
   ctx.fillStyle='#fff';
-  ctx.fillText(text,bx+9,by+16);
-  ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(cx-5,by+bh+3);ctx.lineTo(cx+5,by+bh+3);ctx.lineTo(cx,by+bh+12);ctx.fill();
-  ctx.fillStyle='#000';ctx.beginPath();ctx.moveTo(cx-3,by+bh+3);ctx.lineTo(cx+3,by+bh+3);ctx.lineTo(cx,by+bh+10);ctx.fill();
+  ctx.beginPath();ctx.moveTo(cx-5,by+bh+2);ctx.lineTo(cx+5,by+bh+2);ctx.lineTo(cx,by+bh+11);ctx.fill();
+  ctx.fillStyle='#000';
+  ctx.beginPath();ctx.moveTo(cx-3,by+bh+2);ctx.lineTo(cx+3,by+bh+2);ctx.lineTo(cx,by+bh+9);ctx.fill();
 }}
 
 function drawAgent(a){{
   if(!sprOK) return;
   const dw=FW*S, dh=FH*S;
   const x=a.px*cv.width - dw/2;
-  const y=a.py*cv.height - dh/2;
+  const y=a.py*cv.height - dh;
   const frame=a.walking?WALK[Math.floor(a.fr/6)%4]:STAND;
   // shadow
-  ctx.fillStyle='rgba(0,0,0,0.3)';
-  ctx.beginPath();ctx.ellipse(x+dw/2,y+dh,dw/2.5,5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,0.4)';
+  ctx.beginPath();ctx.ellipse(x+dw/2,y+dh,dw/2.2,5,0,0,Math.PI*2);ctx.fill();
+  // sprite
   drawSprite(x,y,frame,a.dir,a.tint);
-  // pair label
-  const sc=a.signal==='BULLISH'?'#00c853':a.signal==='BEARISH'?'#ff3131':'#ffd700';
-  ctx.fillStyle='rgba(0,0,0,0.9)';ctx.fillRect(x,y+dh+3,dw,14);
-  ctx.fillStyle=sc;ctx.font='bold 9px monospace';ctx.textAlign='center';
-  ctx.fillText(a.pair,x+dw/2,y+dh+13);ctx.textAlign='left';
-  // bubble
-  const mi=Math.floor((tick+AGENTS.indexOf(a)*35)/100)%a.msgs.length;
+  // pair label badge
+  const sc=a.signal==='BULLISH'?'#00ff41':a.signal==='BEARISH'?'#ff3131':'#ffd700';
+  ctx.fillStyle='rgba(0,0,0,0.9)';
+  ctx.fillRect(x-4,y+dh+3,dw+8,14);
+  ctx.fillStyle=sc;
+  ctx.font='bold 8px "Press Start 2P",monospace';
+  ctx.textAlign='center';
+  ctx.fillText(a.pair,x+dw/2,y+dh+14);
+  ctx.textAlign='left';
+  // speech bubble
+  const mi=Math.floor((tick+AGENTS.indexOf(a)*40)/100)%a.msgs.length;
   drawBubble(x+dw/2,y,a.msgs[mi],a.signal);
 }}
 
 function updateAgents(){{
   AGENTS.forEach(a=>{{
     if(a.walking){{
-      a.px+=a.dir*0.0015;
+      a.px+=a.dir*0.001;
       a.fr+=1;
-      if(a.px>0.92){{a.px=0.92;a.dir=-1;}}
-      if(a.px<0.05){{a.px=0.05;a.dir=1;}}
+      if(a.px>0.88){{a.px=0.88;a.dir=-1;}}
+      if(a.px<0.08){{a.px=0.08;a.dir=1;}}
     }}
-    if(Math.random()<0.003){{
+    if(Math.random()<0.004){{
       a.walking=false;
-      setTimeout(()=>a.walking=true,1500+Math.random()*2000);
+      setTimeout(()=>a.walking=true,1500+Math.random()*2500);
     }}
   }});
 }}
@@ -287,18 +242,28 @@ function loop(){{
   ctx.clearRect(0,0,cv.width,cv.height);
   updateAgents();
   [...AGENTS].sort((a,b)=>a.py-b.py).forEach(a=>drawAgent(a));
+  // clock top-right
+  const n=new Date();
+  const ts=n.getHours().toString().padStart(2,'0')+':'+
+           n.getMinutes().toString().padStart(2,'0')+':'+
+           n.getSeconds().toString().padStart(2,'0');
+  ctx.fillStyle='rgba(0,0,0,0.8)';ctx.fillRect(cv.width-105,8,98,20);
+  ctx.strokeStyle='#4a9eff';ctx.lineWidth=1;ctx.strokeRect(cv.width-105,8,98,20);
+  ctx.fillStyle='#00ff41';ctx.font='9px "Press Start 2P",monospace';
+  ctx.fillText(ts,cv.width-98,22);
   requestAnimationFrame(loop);
 }}
 loop();
 </script>
 """
 
+BG_URL     = "https://raw.githubusercontent.com/pech3930/forex-bot/main/office_bg.png"
 SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronaut.png"
 
 if not run_btn:
     default_agents=build_agents(
         selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],{})
-    st.components.v1.html(render_canvas(default_agents,SPRITE_URL),height=620,scrolling=False)
+    st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=620,scrolling=False)
     st.markdown("""
     <div style="text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#333;padding:8px">
     ← PRESS ANALYZE NOW TO START
@@ -312,18 +277,18 @@ else:
         ph=st.empty()
         loading=build_agents(selected_pairs,{p:("NEUTRAL","Loading...") for p in selected_pairs})
         for a in loading: a["msgs"]=["Fetching!","Reading...","Analyzing!","Working..."]
-        ph.components.v1.html(render_canvas(loading,SPRITE_URL),height=620,scrolling=False)
+        ph.components.v1.html(render_canvas(loading,BG_URL,SPRITE_URL),height=620,scrolling=False)
         with st.spinner(""):
             articles=fetch_news()
             raw=analyze(articles,selected_pairs,api_key)
             overview,signals,watch=parse_result(raw,selected_pairs)
         final=build_agents(selected_pairs,signals)
         ph.empty()
-        st.components.v1.html(render_canvas(final,SPRITE_URL),height=620,scrolling=False)
+        st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=620,scrolling=False)
         cols=st.columns(len(selected_pairs))
         for i,(p,col) in enumerate(zip(selected_pairs,cols)):
             sig,reason=signals.get(p,("NEUTRAL","No data"))
-            sc="#00c853" if sig=="BULLISH" else "#ff3131" if sig=="BEARISH" else "#ffd700"
+            sc="#00ff41" if sig=="BULLISH" else "#ff3131" if sig=="BEARISH" else "#ffd700"
             arrow="▲" if sig=="BULLISH" else "▼" if sig=="BEARISH" else "◆"
             with col:
                 st.markdown(f"""
