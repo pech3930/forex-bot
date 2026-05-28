@@ -109,17 +109,27 @@ def parse_result(text,pairs):
 
 def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
-    # positions (% of room) — placed near desks in the background image
-    positions=[(0.18,0.58),(0.38,0.62),(0.55,0.68),(0.72,0.58),(0.85,0.65),(0.30,0.72)]
+    # patrol paths: each agent walks left-right within their desk area
+    # format: (startX%, endX%, Y%) — percentage of background image area
+    patrols=[
+        (0.15,0.30,0.65),  # desk 1 - front left
+        (0.30,0.48,0.72),  # desk 2 - front center-left
+        (0.48,0.62,0.78),  # desk 3 - front center
+        (0.62,0.75,0.55),  # desk 4 - back right
+        (0.75,0.88,0.62),  # desk 5 - right side
+        (0.20,0.40,0.80),  # extra
+    ]
     agents=[]
     for i,p in enumerate(pairs):
         sig,reason=signals.get(p,("NEUTRAL","Analyzing..."))
         msgs={"BULLISH":[p+"!","▲ BUY!","Bullish!","UP!"],
               "BEARISH":[p+"!","▼ SELL!","Bearish!","DOWN!"],
               "NEUTRAL":[p,"◆ WAIT","Watch","..."]}.get(sig,["..."])
-        px,py=positions[i%len(positions)]
+        patrol=patrols[i%len(patrols)]
+        startX=(patrol[0]+patrol[1])/2  # start in middle of patrol
         agents.append({"pair":p,"signal":sig,"reason":reason,
-                       "px":px,"py":py,
+                       "px":startX,"py":patrol[2],
+                       "minX":patrol[0],"maxX":patrol[1],
                        "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*20,
                        "walking":True,"dir":1 if i%2==0 else -1})
     return agents
@@ -128,9 +138,10 @@ def render_canvas(agents, bg_url, sprite_url):
     agents_json=str(agents).replace("True","true").replace("False","false").replace("'",'"')
     return f"""
 <style>
-html,body{{margin:0;padding:0;overflow:hidden}}
-.scene{{position:relative;width:100%;height:600px;background:#0a0a14}}
-.bg{{position:absolute;top:0;left:0;width:100%;height:100%;
+html,body{{margin:0;padding:0;overflow:hidden;background:#0a0a14}}
+.scene{{position:relative;width:100%;height:700px;background:#0a0a14;
+  display:flex;align-items:center;justify-content:center}}
+.bg{{width:100%;height:100%;
   background:url('{bg_url}') center/contain no-repeat}}
 canvas{{position:absolute;top:0;left:0;width:100%;height:100%}}
 </style>
@@ -145,6 +156,7 @@ const cv=document.getElementById('fc');
 const ctx=cv.getContext('2d');
 ctx.imageSmoothingEnabled=false;
 
+// ── sizing: match the scene div ──
 function resize(){{
   const scene=document.querySelector('.scene');
   cv.width=scene.offsetWidth;
@@ -153,6 +165,26 @@ function resize(){{
 setTimeout(resize,200);
 window.addEventListener('resize',resize);
 
+// ── background image bounds ──
+// the bg image uses "contain" so we need to find where it actually renders
+const bgImg=new Image();
+bgImg.src="{bg_url}";
+let bgX=0,bgY=0,bgW=0,bgH=0;
+function calcBgBounds(){{
+  if(bgImg.width===0) return;
+  const ratio=bgImg.width/bgImg.height;
+  const sceneW=cv.width, sceneH=cv.height;
+  const sceneRatio=sceneW/sceneH;
+  if(sceneRatio>ratio){{
+    bgH=sceneH; bgW=sceneH*ratio;
+  }} else {{
+    bgW=sceneW; bgH=sceneW/ratio;
+  }}
+  bgX=(sceneW-bgW)/2;
+  bgY=(sceneH-bgH)/2;
+}}
+
+// ── sprite ──
 const spr=new Image();
 spr.crossOrigin='anonymous';
 spr.src=SPRITE_URL;
@@ -182,42 +214,32 @@ function drawBubble(cx,cy,text,sig){{
   ctx.font='bold 9px "Press Start 2P",monospace';
   const tw=ctx.measureText(text).width;
   const bw=tw+16,bh=22,bx=cx-bw/2,by=cy-bh-12;
-  // white border
   ctx.fillStyle='#fff';ctx.fillRect(bx-2,by-2,bw+4,bh+4);
-  // black bg
   ctx.fillStyle='#000';ctx.fillRect(bx,by,bw,bh);
-  // colored top stripe
   ctx.fillStyle=col;ctx.fillRect(bx,by,bw,4);
-  // text
   ctx.fillStyle='#fff';ctx.fillText(text,bx+8,by+16);
-  // tail
-  ctx.fillStyle='#fff';
-  ctx.beginPath();ctx.moveTo(cx-5,by+bh+2);ctx.lineTo(cx+5,by+bh+2);ctx.lineTo(cx,by+bh+11);ctx.fill();
-  ctx.fillStyle='#000';
-  ctx.beginPath();ctx.moveTo(cx-3,by+bh+2);ctx.lineTo(cx+3,by+bh+2);ctx.lineTo(cx,by+bh+9);ctx.fill();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(cx-5,by+bh+2);ctx.lineTo(cx+5,by+bh+2);ctx.lineTo(cx,by+bh+11);ctx.fill();
+  ctx.fillStyle='#000';ctx.beginPath();ctx.moveTo(cx-3,by+bh+2);ctx.lineTo(cx+3,by+bh+2);ctx.lineTo(cx,by+bh+9);ctx.fill();
 }}
 
 function drawAgent(a){{
-  if(!sprOK) return;
+  if(!sprOK||bgW===0) return;
   const dw=FW*S, dh=FH*S;
-  const x=a.px*cv.width - dw/2;
-  const y=a.py*cv.height - dh;
+  // convert % position to actual screen pixels within background bounds
+  const x=bgX + a.px*bgW - dw/2;
+  const y=bgY + a.py*bgH - dh;
   const frame=a.walking?WALK[Math.floor(a.fr/6)%4]:STAND;
   // shadow
   ctx.fillStyle='rgba(0,0,0,0.4)';
   ctx.beginPath();ctx.ellipse(x+dw/2,y+dh,dw/2.2,5,0,0,Math.PI*2);ctx.fill();
   // sprite
   drawSprite(x,y,frame,a.dir,a.tint);
-  // pair label badge
+  // pair label
   const sc=a.signal==='BULLISH'?'#00ff41':a.signal==='BEARISH'?'#ff3131':'#ffd700';
-  ctx.fillStyle='rgba(0,0,0,0.9)';
-  ctx.fillRect(x-4,y+dh+3,dw+8,14);
-  ctx.fillStyle=sc;
-  ctx.font='bold 8px "Press Start 2P",monospace';
-  ctx.textAlign='center';
-  ctx.fillText(a.pair,x+dw/2,y+dh+14);
-  ctx.textAlign='left';
-  // speech bubble
+  ctx.fillStyle='rgba(0,0,0,0.9)';ctx.fillRect(x-4,y+dh+3,dw+8,14);
+  ctx.fillStyle=sc;ctx.font='bold 8px "Press Start 2P",monospace';
+  ctx.textAlign='center';ctx.fillText(a.pair,x+dw/2,y+dh+14);ctx.textAlign='left';
+  // bubble
   const mi=Math.floor((tick+AGENTS.indexOf(a)*40)/100)%a.msgs.length;
   drawBubble(x+dw/2,y,a.msgs[mi],a.signal);
 }}
@@ -227,8 +249,9 @@ function updateAgents(){{
     if(a.walking){{
       a.px+=a.dir*0.001;
       a.fr+=1;
-      if(a.px>0.88){{a.px=0.88;a.dir=-1;}}
-      if(a.px<0.08){{a.px=0.08;a.dir=1;}}
+      // clamp to patrol bounds — agents stay in their area
+      if(a.px>a.maxX){{a.px=a.maxX;a.dir=-1;}}
+      if(a.px<a.minX){{a.px=a.minX;a.dir=1;}}
     }}
     if(Math.random()<0.004){{
       a.walking=false;
@@ -239,10 +262,11 @@ function updateAgents(){{
 
 function loop(){{
   tick++;
+  calcBgBounds();
   ctx.clearRect(0,0,cv.width,cv.height);
   updateAgents();
   [...AGENTS].sort((a,b)=>a.py-b.py).forEach(a=>drawAgent(a));
-  // clock top-right
+  // clock
   const n=new Date();
   const ts=n.getHours().toString().padStart(2,'0')+':'+
            n.getMinutes().toString().padStart(2,'0')+':'+
@@ -263,7 +287,7 @@ SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronau
 if not run_btn:
     default_agents=build_agents(
         selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],{})
-    st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=650,scrolling=False)
+    st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=720,scrolling=False)
     st.markdown("""
     <div style="text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#333;padding:8px">
     ← PRESS ANALYZE NOW TO START
@@ -277,14 +301,14 @@ else:
         ph=st.empty()
         loading=build_agents(selected_pairs,{p:("NEUTRAL","Loading...") for p in selected_pairs})
         for a in loading: a["msgs"]=["Fetching!","Reading...","Analyzing!","Working..."]
-        ph.components.v1.html(render_canvas(loading,BG_URL,SPRITE_URL),height=650,scrolling=False)
+        ph.components.v1.html(render_canvas(loading,BG_URL,SPRITE_URL),height=720,scrolling=False)
         with st.spinner(""):
             articles=fetch_news()
             raw=analyze(articles,selected_pairs,api_key)
             overview,signals,watch=parse_result(raw,selected_pairs)
         final=build_agents(selected_pairs,signals)
         ph.empty()
-        st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=650,scrolling=False)
+        st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=720,scrolling=False)
         cols=st.columns(len(selected_pairs))
         for i,(p,col) in enumerate(zip(selected_pairs,cols)):
             sig,reason=signals.get(p,("NEUTRAL","No data"))
