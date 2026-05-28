@@ -88,7 +88,7 @@ def analyze(articles,pairs,key):
   }},
   "watch": "<ประเด็นที่ต้องติดตาม>"
 }}"""
-    r=client.messages.create(model="claude-3-5-sonnet-20241022",max_tokens=1000,
+    r=client.messages.create(model="claude-sonnet-4-20250514",max_tokens=1000,
         messages=[{"role":"user","content":prompt}])
     return r.content[0].text
 
