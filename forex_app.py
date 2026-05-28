@@ -129,7 +129,7 @@ def render_canvas(agents, bg_url, sprite_url):
     return f"""
 <style>
 html,body{{margin:0;padding:0;overflow:hidden}}
-.scene{{position:relative;width:100%;padding-top:56.25%;background:#0a0a14}}
+.scene{{position:relative;width:100%;height:600px;background:#0a0a14}}
 .bg{{position:absolute;top:0;left:0;width:100%;height:100%;
   background:url('{bg_url}') center/cover no-repeat}}
 canvas{{position:absolute;top:0;left:0;width:100%;height:100%}}
@@ -263,7 +263,7 @@ SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronau
 if not run_btn:
     default_agents=build_agents(
         selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],{})
-    st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=620,scrolling=False)
+    st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=650,scrolling=False)
     st.markdown("""
     <div style="text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#333;padding:8px">
     ← PRESS ANALYZE NOW TO START
@@ -277,14 +277,14 @@ else:
         ph=st.empty()
         loading=build_agents(selected_pairs,{p:("NEUTRAL","Loading...") for p in selected_pairs})
         for a in loading: a["msgs"]=["Fetching!","Reading...","Analyzing!","Working..."]
-        ph.components.v1.html(render_canvas(loading,BG_URL,SPRITE_URL),height=620,scrolling=False)
+        ph.components.v1.html(render_canvas(loading,BG_URL,SPRITE_URL),height=650,scrolling=False)
         with st.spinner(""):
             articles=fetch_news()
             raw=analyze(articles,selected_pairs,api_key)
             overview,signals,watch=parse_result(raw,selected_pairs)
         final=build_agents(selected_pairs,signals)
         ph.empty()
-        st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=620,scrolling=False)
+        st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=650,scrolling=False)
         cols=st.columns(len(selected_pairs))
         for i,(p,col) in enumerate(zip(selected_pairs,cols)):
             sig,reason=signals.get(p,("NEUTRAL","No data"))
