@@ -109,15 +109,13 @@ def parse_result(text,pairs):
 
 def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
-    # fixed positions: agents stand at their desk (measured from office_bg.png)
-    # (x%, y%) — percentage of background image
     desk_positions=[
-        (0.34, 0.65),  # เก้าอี้ 1: ซ้ายบน
-        (0.51, 0.54),  # เก้าอี้ 2: กลางบน
-        (0.80, 0.72),  # เก้าอี้ 3: ขวาล่าง ใกล้ตู้น้ำ
-        (0.62, 0.90),  # เก้าอี้ 4: กลางล่างสุด
-        (0.67, 0.57),  # เก้าอี้ 5: ขวากลาง
-        (0.79, 0.63),  # เก้าอี้ 6: ขวาล่าง
+        (0.34, 0.65),
+        (0.51, 0.54),
+        (0.80, 0.72),
+        (0.62, 0.90),
+        (0.67, 0.57),
+        (0.79, 0.63),
     ]
     agents=[]
     for i,p in enumerate(pairs):
@@ -132,7 +130,7 @@ def build_agents(pairs,signals):
                        "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*20,
                        "walking":True,"dir":1 if i%2==0 else -1})
     return agents
-  
+
 def render_canvas(agents, bg_url, sprite_url):
     agents_json=str(agents).replace("True","true").replace("False","false").replace("'",'"')
     return f"""
@@ -155,7 +153,6 @@ const cv=document.getElementById('fc');
 const ctx=cv.getContext('2d');
 ctx.imageSmoothingEnabled=false;
 
-// ── sizing: match the scene div ──
 function resize(){{
   const scene=document.querySelector('.scene');
   cv.width=scene.offsetWidth;
@@ -164,8 +161,6 @@ function resize(){{
 setTimeout(resize,200);
 window.addEventListener('resize',resize);
 
-// ── background image bounds ──
-// the bg image uses "contain" so we need to find where it actually renders
 const bgImg=new Image();
 bgImg.src="{bg_url}";
 let bgX=0,bgY=0,bgW=0,bgH=0;
@@ -183,7 +178,6 @@ function calcBgBounds(){{
   bgY=(sceneH-bgH)/2;
 }}
 
-// ── sprite ──
 const spr=new Image();
 spr.crossOrigin='anonymous';
 spr.src=SPRITE_URL;
@@ -193,15 +187,12 @@ spr.onload=()=>{{sprOK=true;FW=Math.round(spr.width/12);FH=spr.height;}};
 const WALK=[8,9,10,11], STAND=8, S=3;
 let tick=0;
 
-function drawSprite(x,y,frame,dir,tint){{
+function drawSprite(x,y,frame,dir){{
   if(!sprOK) return;
   const dw=FW*S, dh=FH*S;
   ctx.save();
   if(dir<0){{ctx.translate(x+dw,y);ctx.scale(-1,1);ctx.drawImage(spr,frame*FW,0,FW,FH,0,0,dw,dh);}}
   else ctx.drawImage(spr,frame*FW,0,FW,FH,x,y,dw,dh);
- 
-  ctx.globalCompositeOperation='source-over';
-  ctx.globalAlpha=1;
   ctx.restore();
 }}
 
@@ -221,21 +212,12 @@ function drawBubble(cx,cy,text,sig){{
 function drawAgent(a){{
   if(!sprOK||bgW===0) return;
   const dw=FW*S, dh=FH*S;
-  // convert % position to actual screen pixels within background bounds
   const x=bgX + a.px*bgW - dw/2;
   const y=bgY + a.py*bgH - dh;
   const frame=a.walking?WALK[Math.floor(a.fr/6)%4]:STAND;
-  // shadow
   ctx.fillStyle='rgba(0,0,0,0.4)';
   ctx.beginPath();ctx.ellipse(x+dw/2,y+dh,dw/2.2,5,0,0,Math.PI*2);ctx.fill();
-  // sprite
-  drawSprite(x,y,frame,a.dir,a.tint);
-  // pair label
-  const sc=a.signal==='BULLISH'?'#00ff41':a.signal==='BEARISH'?'#ff3131':'#ffd700';
-  ctx.fillStyle='rgba(0,0,0,0.9)';ctx.fillRect(x-4,y+dh+3,dw+8,14);
-  ctx.fillStyle=sc;ctx.font='bold 8px "Press Start 2P",monospace';
-  ctx.textAlign='center';ctx.fillText(a.pair,x+dw/2,y+dh+14);ctx.textAlign='left';
-  // bubble
+  drawSprite(x,y,frame,a.dir);
   const mi=Math.floor((tick+AGENTS.indexOf(a)*40)/100)%a.msgs.length;
   drawBubble(x+dw/2,y,a.msgs[mi],a.signal);
 }}
@@ -245,7 +227,6 @@ function updateAgents(){{
     if(a.walking){{
       a.px+=a.dir*0.001;
       a.fr+=1;
-      // clamp to patrol bounds — agents stay in their area
       if(a.px>a.maxX){{a.px=a.maxX;a.dir=-1;}}
       if(a.px<a.minX){{a.px=a.minX;a.dir=1;}}
     }}
@@ -262,7 +243,6 @@ function loop(){{
   ctx.clearRect(0,0,cv.width,cv.height);
   updateAgents();
   [...AGENTS].sort((a,b)=>a.py-b.py).forEach(a=>drawAgent(a));
-  // clock
   const n=new Date();
   const ts=n.getHours().toString().padStart(2,'0')+':'+
            n.getMinutes().toString().padStart(2,'0')+':'+
@@ -294,17 +274,14 @@ else:
     elif not selected_pairs:
         st.error("SELECT PAIRS")
     else:
-        ph=st.empty()
-        loading=build_agents(selected_pairs,{p:("NEUTRAL","Loading...") for p in selected_pairs})
-        for a in loading: a["msgs"]=["Fetching!","Reading...","Analyzing!","Working..."]
-        ph.components.v1.html(render_canvas(loading,BG_URL,SPRITE_URL),height=720,scrolling=False)
-        with st.spinner(""):
+        with st.spinner("กำลังวิเคราะห์..."):
             articles=fetch_news()
             raw=analyze(articles,selected_pairs,api_key)
             overview,signals,watch=parse_result(raw,selected_pairs)
+
         final=build_agents(selected_pairs,signals)
-        ph.empty()
         st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=720,scrolling=False)
+
         cols=st.columns(len(selected_pairs))
         for i,(p,col) in enumerate(zip(selected_pairs,cols)):
             sig,reason=signals.get(p,("NEUTRAL","No data"))
@@ -317,18 +294,21 @@ else:
                   <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:{sc};border:1px solid {sc};padding:2px 4px;display:inline-block">{arrow} {sig}</div>
                   <div style="font-family:'Press Start 2P',monospace;font-size:5px;color:#555;margin-top:4px;line-height:1.6">{reason[:45]}</div>
                 </div>""", unsafe_allow_html=True)
+
         if overview:
             st.markdown(f"""
             <div style="background:#0d0d1a;border:2px solid #4a9eff;padding:10px;margin-top:4px">
               <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4a9eff;margin-bottom:6px">📋 OVERVIEW</div>
               <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#ccc;line-height:1.9">{overview}</div>
             </div>""", unsafe_allow_html=True)
+
         if watch:
             st.markdown(f"""
             <div style="background:#0d0d1a;border:2px solid #ffd700;padding:8px;margin-top:6px">
               <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;margin-bottom:4px">⚠ WATCH</div>
               <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#aaa;line-height:1.8">{watch}</div>
             </div>""", unsafe_allow_html=True)
+
         st.markdown("""
         <div style="border:2px dashed #ff3131;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:6px;color:#ff3131;margin-top:8px">
         ⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY
