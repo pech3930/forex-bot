@@ -92,7 +92,7 @@ def analyze(articles,pairs,key):
   }},
   "watch": "<ประเด็นที่ต้องติดตาม>"
 }}"""
-    r=client.messages.create(model="claude-3-5-haiku-20241022",max_tokens=1000,
+    r=client.messages.create(model="claude-haiku-4-5-20251001",max_tokens=1000,
         messages=[{"role":"user","content":prompt}])
     return r.content[0].text
 
