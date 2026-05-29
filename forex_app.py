@@ -95,12 +95,20 @@ def analyze(articles, pairs, key):
   }},
   "watch": "<ประเด็นที่ต้องติดตาม>"
 }}"""
-    r = client.messages.create(
-        model="claude-3-haiku-20240307",
-        max_tokens=1000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return r.content[0].text
+    try:
+        r = client.messages.create(
+            # อัปเดตเป็นโมเดล Haiku เวอร์ชันล่าสุดเพื่อความเสถียร
+            model="claude-3-5-haiku-20241022", 
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return r.content[0].text
+    except anthropic.NotFoundError as e:
+        return f'{{"overview": "API ERROR: 404 ไม่พบโมเดลหรือ Endpoint กรุณาตรวจสอบว่าบัญชีของคุณเข้าถึงโมเดลนี้ได้หรือไม่", "signals": {{}}, "watch": "เปลี่ยนโมเดล หรือ ตรวจสอบ API Key"}}'
+    except anthropic.AuthenticationError as e:
+        return f'{{"overview": "API ERROR: API Key ไม่ถูกต้องหรือหมดอายุ", "signals": {{}}, "watch": "ตรวจสอบ Key ใน Streamlit Secrets"}}'
+    except Exception as e:
+        return f'{{"overview": "API ERROR: {str(e)}", "signals": {{}}, "watch": "ดูรายละเอียดใน Log"}}'
 
 def parse_result(text, pairs):
     try:
