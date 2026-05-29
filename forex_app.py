@@ -35,7 +35,7 @@ st.markdown(f"""
 
 with st.sidebar:
     st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#4a9eff;margin-bottom:10px">⚙ CONFIG</div>', unsafe_allow_html=True)
-    api_key = os.environ.get("ANTHROPIC_API_KEY","")
+    try:         api_key = st.secrets["ANTHROPIC_API_KEY"].strip()     except:         api_key = ""
     if api_key:
         st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#00ff41;margin-bottom:8px">✓ KEY LOADED</div>', unsafe_allow_html=True)
     else:
