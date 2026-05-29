@@ -20,6 +20,18 @@ html,body,[class*="css"]{font-family:'Press Start 2P',monospace;background:#0a0a
 .stButton>button:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 #1a4a7a!important}
 [data-testid="stSidebar"]{background:#0d0d1a!important;border-right:3px solid #4a9eff}
 iframe{border:none!important}
+.news-panel{background:#0d0d1a;border:3px solid #4a9eff;padding:12px;height:700px;overflow-y:auto;box-shadow:4px 4px 0 #1a4a7a}
+.news-panel::-webkit-scrollbar{width:8px}
+.news-panel::-webkit-scrollbar-track{background:#0a0a14}
+.news-panel::-webkit-scrollbar-thumb{background:#4a9eff}
+.news-title{font-family:'Press Start 2P',monospace;font-size:9px;color:#4a9eff;margin-bottom:10px;letter-spacing:1px;border-bottom:2px solid #4a9eff;padding-bottom:6px}
+.news-card{background:#1a1a2e;border:2px solid #2a3f6a;padding:8px;margin-bottom:10px}
+.news-card-title{font-family:'Press Start 2P',monospace;font-size:7px;margin-bottom:6px;letter-spacing:1px}
+.news-card-body{font-family:'Press Start 2P',monospace;font-size:6px;color:#ccc;line-height:1.9}
+.signal-row{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#1a1a2e;margin:4px 0;border-left:3px solid}
+.signal-pair{font-family:'Press Start 2P',monospace;font-size:7px;color:#fff}
+.signal-tag{font-family:'Press Start 2P',monospace;font-size:6px;padding:2px 5px;border:1px solid}
+.signal-reason{font-family:'Press Start 2P',monospace;font-size:6px;color:#aaa;line-height:1.7;margin-top:5px;padding-left:5px}
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,13 +98,13 @@ def analyze(articles,pairs,key):
 ข่าวสาร:\n{news_text}
 ตอบกลับในรูปแบบ JSON เท่านั้น:
 {{
-  "overview": "<สรุป 2-3 ประโยคภาษาไทย>",
+  "overview": "<สรุป 3-4 ประโยคภาษาไทย>",
   "signals": {{
-    {", ".join(f'"{p}": {{"signal": "<BULLISH/BEARISH/NEUTRAL>", "reason": "<เหตุผล 1 ประโยคภาษาไทย>"}}' for p in pairs)}
+    {", ".join(f'"{p}": {{"signal": "<BULLISH/BEARISH/NEUTRAL>", "reason": "<เหตุผล 2 ประโยคภาษาไทย>"}}' for p in pairs)}
   }},
-  "watch": "<ประเด็นที่ต้องติดตาม>"
+  "watch": "<ประเด็นที่ต้องติดตาม 2-3 ประโยคภาษาไทย>"
 }}"""
-    r=client.messages.create(model="claude-haiku-4-5-20251001",max_tokens=1000,
+    r=client.messages.create(model="claude-haiku-4-5-20251001",max_tokens=1500,
         messages=[{"role":"user","content":prompt}])
     return r.content[0].text
 
@@ -261,17 +273,70 @@ loop();
 </script>
 """
 
+def render_news_panel(overview, signals, watch):
+    """Build right-side news/analysis panel HTML"""
+    signal_rows=""
+    for p,(sig,reason) in signals.items():
+        sc="#00ff41" if sig=="BULLISH" else "#ff3131" if sig=="BEARISH" else "#ffd700"
+        arrow="▲" if sig=="BULLISH" else "▼" if sig=="BEARISH" else "◆"
+        signal_rows+=f"""
+        <div style="background:#1a1a2e;border-left:3px solid {sc};padding:6px 8px;margin:6px 0">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-family:'Press Start 2P',monospace;font-size:7px;color:#fff">{p}</span>
+            <span style="font-family:'Press Start 2P',monospace;font-size:6px;color:{sc};border:1px solid {sc};padding:2px 5px">{arrow} {sig}</span>
+          </div>
+          <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#aaa;line-height:1.7;margin-top:5px">{reason}</div>
+        </div>"""
+
+    return f"""
+    <div class="news-panel">
+      <div class="news-title">📊 ANALYSIS DASHBOARD</div>
+
+      <div class="news-card" style="border-color:#4a9eff">
+        <div class="news-card-title" style="color:#4a9eff">📋 OVERVIEW</div>
+        <div class="news-card-body">{overview}</div>
+      </div>
+
+      <div class="news-card" style="border-color:#00ff41">
+        <div class="news-card-title" style="color:#00ff41">⚡ SIGNALS</div>
+        {signal_rows}
+      </div>
+
+      <div class="news-card" style="border-color:#ffd700">
+        <div class="news-card-title" style="color:#ffd700">⚠ WATCH</div>
+        <div class="news-card-body">{watch}</div>
+      </div>
+
+      <div style="border:2px dashed #ff3131;padding:6px 8px;font-family:'Press Start 2P',monospace;font-size:5px;color:#ff3131;margin-top:8px;line-height:1.7">
+      ⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY
+      </div>
+    </div>
+    """
+
 BG_URL     = "https://raw.githubusercontent.com/pech3930/forex-bot/main/office_bg.png"
 SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronaut.png"
 
 if not run_btn:
+    # ── waiting state: show room only ──
     default_agents=build_agents(
         selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],{})
-    st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=720,scrolling=False)
-    st.markdown("""
-    <div style="text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#333;padding:8px">
-    ← PRESS ANALYZE NOW TO START
-    </div>""", unsafe_allow_html=True)
+    col_room, col_news = st.columns([2, 1])
+    with col_room:
+        st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=720,scrolling=False)
+    with col_news:
+        st.markdown("""
+        <div class="news-panel">
+          <div class="news-title">📊 ANALYSIS DASHBOARD</div>
+          <div class="news-card" style="border-color:#4a9eff">
+            <div class="news-card-title" style="color:#4a9eff">📋 STATUS</div>
+            <div class="news-card-body">รอการวิเคราะห์... กรุณากดปุ่ม ANALYZE NOW ที่แถบด้านซ้ายเพื่อเริ่มต้น</div>
+          </div>
+          <div class="news-card" style="border-color:#ffd700">
+            <div class="news-card-title" style="color:#ffd700">💡 INFO</div>
+            <div class="news-card-body">AI Agents จะดึงข่าวจาก Reuters และ Investing.com มาวิเคราะห์ผลกระทบต่อคู่เงินที่เลือกไว้</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 else:
     if not api_key:
         st.error("NO API KEY - กรุณาใส่ API Key ใน Settings > Secrets")
@@ -287,39 +352,10 @@ else:
                 st.error(f"API Error: {type(e).__name__}: {e}")
                 overview,signals,watch="Error",{p:("NEUTRAL","API Error") for p in selected_pairs},"Check API Key"
 
-        # ── แสดงห้อง pixel art พร้อมตัวละครก่อน ──
+        # ── show room (left) + news panel (right) ──
         final=build_agents(selected_pairs,signals)
-        st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=720,scrolling=False)
-
-        # ── Signal cards ──
-        cols=st.columns(len(selected_pairs))
-        for i,(p,col) in enumerate(zip(selected_pairs,cols)):
-            sig,reason=signals.get(p,("NEUTRAL","No data"))
-            sc="#00ff41" if sig=="BULLISH" else "#ff3131" if sig=="BEARISH" else "#ffd700"
-            arrow="▲" if sig=="BULLISH" else "▼" if sig=="BEARISH" else "◆"
-            with col:
-                st.markdown(f"""
-                <div style="background:#0d0d1a;border:2px solid {sc};padding:8px;text-align:center;margin-bottom:6px">
-                  <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#888;margin-bottom:4px">{p}</div>
-                  <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:{sc};border:1px solid {sc};padding:2px 4px;display:inline-block">{arrow} {sig}</div>
-                  <div style="font-family:'Press Start 2P',monospace;font-size:5px;color:#555;margin-top:4px;line-height:1.6">{reason[:45]}</div>
-                </div>""", unsafe_allow_html=True)
-
-        if overview:
-            st.markdown(f"""
-            <div style="background:#0d0d1a;border:2px solid #4a9eff;padding:10px;margin-top:4px">
-              <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4a9eff;margin-bottom:6px">📋 OVERVIEW</div>
-              <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#ccc;line-height:1.9">{overview}</div>
-            </div>""", unsafe_allow_html=True)
-
-        if watch:
-            st.markdown(f"""
-            <div style="background:#0d0d1a;border:2px solid #ffd700;padding:8px;margin-top:6px">
-              <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#ffd700;margin-bottom:4px">⚠ WATCH</div>
-              <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#aaa;line-height:1.8">{watch}</div>
-            </div>""", unsafe_allow_html=True)
-
-        st.markdown("""
-        <div style="border:2px dashed #ff3131;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:6px;color:#ff3131;margin-top:8px">
-        ⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY
-        </div>""", unsafe_allow_html=True)
+        col_room, col_news = st.columns([2, 1])
+        with col_room:
+            st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=720,scrolling=False)
+        with col_news:
+            st.markdown(render_news_panel(overview, signals, watch), unsafe_allow_html=True)
