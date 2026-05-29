@@ -98,7 +98,7 @@ def analyze(articles, pairs, key):
     try:
         r = client.messages.create(
             # อัปเดตเป็นโมเดล Haiku เวอร์ชันล่าสุดเพื่อความเสถียร
-            model="claude-3-5-haiku-20241022", 
+            model="claude-3-5-sonnet-20241022", 
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
