@@ -92,7 +92,7 @@ def analyze(articles,pairs,key):
   }},
   "watch": "<ประเด็นที่ต้องติดตาม>"
 }}"""
-    r=client.messages.create(model="claude-3-haiku-20240307",max_tokens=1000,
+    r=client.messages.create(model="claude-3-5-haiku-20241022",max_tokens=1000,
         messages=[{"role":"user","content":prompt}])
     return r.content[0].text
 
@@ -280,24 +280,12 @@ else:
     else:
         with st.spinner("กำลังวิเคราะห์..."):
             articles=fetch_news()
-            raw=analyze(articles,selected_pairs,api_key)
-            overview,signals,watch=parse_result(raw,selected_pairs)
-
-        final=build_agents(selected_pairs,signals)
-        st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=720,scrolling=False)
-
-        cols=st.columns(len(selected_pairs))
-        for i,(p,col) in enumerate(zip(selected_pairs,cols)):
-            sig,reason=signals.get(p,("NEUTRAL","No data"))
-            sc="#00ff41" if sig=="BULLISH" else "#ff3131" if sig=="BEARISH" else "#ffd700"
-            arrow="▲" if sig=="BULLISH" else "▼" if sig=="BEARISH" else "◆"
-            with col:
-                st.markdown(f"""
-                <div style="background:#0d0d1a;border:2px solid {sc};padding:8px;text-align:center;margin-bottom:6px">
-                  <div style="font-family:'Press Start 2P',monospace;font-size:6px;color:#888;margin-bottom:4px">{p}</div>
-                  <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:{sc};border:1px solid {sc};padding:2px 4px;display:inline-block">{arrow} {sig}</div>
-                  <div style="font-family:'Press Start 2P',monospace;font-size:5px;color:#555;margin-top:4px;line-height:1.6">{reason[:45]}</div>
-                </div>""", unsafe_allow_html=True)
+            try:
+                raw=analyze(articles,selected_pairs,api_key)
+                overview,signals,watch=parse_result(raw,selected_pairs)
+            except Exception as e:
+                st.error(f"API Error: {type(e).__name__}: {e}")
+                overview,signals,watch="Error",{p:("NEUTRAL","API Error") for p in selected_pairs},"Check API Key"
 
         if overview:
             st.markdown(f"""
