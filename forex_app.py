@@ -284,6 +284,7 @@ else:
                 raw=analyze(articles,selected_pairs,api_key)
                 overview,signals,watch=parse_result(raw,selected_pairs)
             except Exception as e:
+                st.warning(f"Key starts with: {api_key[:15]}... length: {len(api_key)}")
                 st.error(f"API Error: {type(e).__name__}: {e}")
                 overview,signals,watch="Error",{p:("NEUTRAL","API Error") for p in selected_pairs},"Check API Key"
 
