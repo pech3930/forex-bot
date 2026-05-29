@@ -1,7 +1,8 @@
 import streamlit as st
-import random
+import anthropic
+import feedparser
+import os
 import json
-import time
 from datetime import datetime
 
 st.set_page_config(page_title="FOREX TRADING OFFICE", page_icon="💹", layout="wide")
@@ -27,75 +28,115 @@ st.markdown(f"""
   border:3px solid #4a9eff;padding:10px 16px;box-shadow:6px 6px 0 #1a4a7a;margin-bottom:10px;
   display:flex;justify-content:space-between;align-items:center">
   <span style="color:#4a9eff">💹 FOREX TRADING OFFICE</span>
-  <span style="font-size:7px;color:#ffd700">LOCAL SIMULATION MODE</span>
+  <span style="font-size:7px;color:#ffd700">POWERED BY CLAUDE AI</span>
   <span style="font-size:8px;color:#00ff41">● {datetime.now().strftime('%H:%M:%S')}</span>
 </div>
 """, unsafe_allow_html=True)
 
 with st.sidebar:
     st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:#4a9eff;margin-bottom:10px">⚙ CONFIG</div>', unsafe_allow_html=True)
-    st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#00ff41;margin-bottom:8px">✓ OFFLINE READY</div>', unsafe_allow_html=True)
-    
+    try:
+        api_key = st.secrets["ANTHROPIC_API_KEY"].strip()
+    except Exception:
+        api_key = ""
+    if api_key:
+        st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#00ff41;margin-bottom:8px">✓ KEY LOADED</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div style="font-size:14px;color:#ffd700;font-family:monospace">🔑 API KEY</div>', unsafe_allow_html=True)
+        api_key = st.text_input("", type="password", placeholder="sk-ant-...", label_visibility="collapsed")
     st.markdown("---")
     st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#ffd700;margin-bottom:6px">💱 PAIRS</div>', unsafe_allow_html=True)
     selected_pairs = st.multiselect("",
         ["EUR/USD","USD/THB","GBP/USD","USD/JPY","XAU/USD","AUD/USD"],
         default=["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],
         label_visibility="collapsed")
-    
+    st.markdown("---")
+    st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#ffd700;margin-bottom:6px">📡 SOURCE</div>', unsafe_allow_html=True)
+    use_reuters   = st.checkbox("Reuters",       value=True)
+    use_investing = st.checkbox("Investing.com", value=True)
     st.markdown("---")
     st.markdown("""
-    <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4a9eff;margin-bottom:6px">LOCAL AGENTS</div>
-    <div style="border:2px solid #00ff41;background:#001a00;padding:5px 7px;margin:3px 0;font-size:10px">🤖 <span style="color:#00ff41">Sim Agent 01</span></div>
-    <div style="border:2px solid #00ff41;background:#001a00;padding:5px 7px;margin:3px 0;font-size:10px">🧠 <span style="color:#00ff41">Logic Core</span></div>
+    <div style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4a9eff;margin-bottom:6px">AI AGENTS</div>
+    <div style="border:2px solid #00ff41;background:#001a00;padding:5px 7px;margin:3px 0;font-size:10px">🤖 <span style="color:#00ff41">News Agent</span></div>
+    <div style="border:2px solid #00ff41;background:#001a00;padding:5px 7px;margin:3px 0;font-size:10px">🧠 <span style="color:#00ff41">Analysis Agent</span></div>
+    <div style="border:2px solid #333;background:#0d0d1a;padding:5px 7px;margin:3px 0;font-size:10px">⚡ <span style="color:#555">Signal Agent</span></div>
     <br>""", unsafe_allow_html=True)
-    run_btn = st.button("▶  GENERATE SIGNALS")
+    run_btn = st.button("▶  ANALYZE NOW")
 
-def generate_mock_signals(pairs):
-    signals = {}
-    reasons_bullish = ["แรงซื้อหนาแน่นตามเทคนิคอล", "กราฟทำทรงสลับขึ้นชัดเจน", "เกิดสัญญาณกลับตัวในไทม์เฟรม"]
-    reasons_bearish = ["เกิดแรงเทขายทำกำไรระยะสั้น", "แนวต้านเหนียวแน่นผ่านยาก", "กราฟเสียทรงหลุดแนวรับหลัก"]
-    reasons_neutral = ["ตลาดไซด์เวย์กำลังเลือกทาง", "ปริมาณการซื้อขายเบาบาง", "ราคาวิ่งอยู่ในกรอบแคบรอปัจจัยหนุน"]
-    
-    for p in pairs:
-        sig = random.choice(["BULLISH", "BEARISH", "NEUTRAL"])
-        if sig == "BULLISH":
-            reason = random.choice(reasons_bullish)
-        elif sig == "BEARISH":
-            reason = random.choice(reasons_bearish)
-        else:
-            reason = random.choice(reasons_neutral)
-        signals[p] = (sig, reason)
-        
-    overview = "ระบบจำลองสัญญาณเทคนิคอลแบบออฟไลน์เสร็จสิ้น ภาพรวมตลาดถูกสุ่มขึ้นเพื่อทดสอบการทำงานของ Dashboard แอนิเมชัน และการตอบสนองของหุ่นยนต์เอเจนต์"
-    watch = "โหมดจำลองสถานการณ์ภายในแอปพลิเคชัน (Simulation Mode) ไม่มีการนำข้อมูลจริงไปใช้ในการลงทุน"
-    return overview, signals, watch
+RSS = {}
+if use_reuters:   RSS["Reuters"]       = "https://feeds.reuters.com/reuters/businessNews"
+if use_investing: RSS["Investing.com"] = "https://www.investing.com/rss/news_25.rss"
 
-def build_agents(pairs, signals):
-    tints = ['#44aaff', '#ffaa44', '#aa88ff', '#44ffaa', '#ffdd44', '#ff88aa']
-    desk_positions = [
-        (0.34, 0.65), (0.51, 0.54), (0.80, 0.72),
-        (0.62, 0.90), (0.67, 0.57), (0.79, 0.63)
+def fetch_news():
+    articles=[]
+    for src,url in RSS.items():
+        try:
+            feed=feedparser.parse(url)
+            for e in feed.entries[:8]:
+                articles.append({"source":src,"title":e.get("title",""),"summary":e.get("summary","")[:300]})
+        except:
+            pass
+    return articles
+
+def analyze(articles,pairs,key):
+    client=anthropic.Anthropic(api_key=key)
+    news_text="\n\n".join(f"[{a['source']}] {a['title']}\n{a['summary']}" for a in articles)
+    prompt=f"""คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์ตลาด Forex
+วิเคราะห์ข่าวและประเมินผลกระทบต่อ: {", ".join(pairs)}
+ข่าวสาร:\n{news_text}
+ตอบกลับในรูปแบบ JSON เท่านั้น:
+{{
+  "overview": "<สรุป 2-3 ประโยคภาษาไทย>",
+  "signals": {{
+    {", ".join(f'"{p}": {{"signal": "<BULLISH/BEARISH/NEUTRAL>", "reason": "<เหตุผล 1 ประโยคภาษาไทย>"}}' for p in pairs)}
+  }},
+  "watch": "<ประเด็นที่ต้องติดตาม>"
+}}"""
+    r=client.messages.create(model="claude-3-haiku-20240307",max_tokens=1000,
+        messages=[{"role":"user","content":prompt}])
+    return r.content[0].text
+
+def parse_result(text,pairs):
+    try:
+        s=text.find('{'); e=text.rfind('}')+1
+        data=json.loads(text[s:e])
+        overview=data.get("overview","วิเคราะห์สำเร็จ")
+        watch=data.get("watch","ติดตามข่าวต่อไป")
+        signals={}
+        for p in pairs:
+            d=data.get("signals",{}).get(p,{"signal":"NEUTRAL","reason":"รอสัญญาณ"})
+            sig=d.get("signal","NEUTRAL").upper()
+            signals[p]=(sig,d.get("reason",""))
+        return overview,signals,watch
+    except:
+        return "วิเคราะห์สำเร็จ",{p:("NEUTRAL","กำลังประมวลผล") for p in pairs},"ติดตามข่าวต่อไป"
+
+def build_agents(pairs,signals):
+    tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
+    desk_positions=[
+        (0.34, 0.65),
+        (0.51, 0.54),
+        (0.80, 0.72),
+        (0.62, 0.90),
+        (0.67, 0.57),
+        (0.79, 0.63),
     ]
-    agents = []
-    for i, p in enumerate(pairs):
-        sig, reason = signals.get(p, ("NEUTRAL", "Analyzing..."))
-        msgs = {
-            "BULLISH": [p + "!", "▲ BUY!", "Bullish!", "UP!"],
-            "BEARISH": [p + "!", "▼ SELL!", "Bearish!", "DOWN!"],
-            "NEUTRAL": [p, "◆ WAIT", "Watch", "..."]
-        }.get(sig, ["..."])
-        dx, dy = desk_positions[i % len(desk_positions)]
-        agents.append({
-            "pair": p, "signal": sig, "reason": reason,
-            "px": dx, "py": dy, "minX": dx - 0.03, "maxX": dx + 0.03,
-            "tint": tints[i % len(tints)], "msgs": msgs, "fr": i * 20,
-            "walking": True, "dir": 1 if i % 2 == 0 else -1
-        })
+    agents=[]
+    for i,p in enumerate(pairs):
+        sig,reason=signals.get(p,("NEUTRAL","Analyzing..."))
+        msgs={"BULLISH":[p+"!","▲ BUY!","Bullish!","UP!"],
+              "BEARISH":[p+"!","▼ SELL!","Bearish!","DOWN!"],
+              "NEUTRAL":[p,"◆ WAIT","Watch","..."]}.get(sig,["..."])
+        dx,dy=desk_positions[i%len(desk_positions)]
+        agents.append({"pair":p,"signal":sig,"reason":reason,
+                       "px":dx,"py":dy,
+                       "minX":dx-0.03,"maxX":dx+0.03,
+                       "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*20,
+                       "walking":True,"dir":1 if i%2==0 else -1})
     return agents
 
 def render_canvas(agents, bg_url, sprite_url):
-    agents_json = str(agents).replace("True", "true").replace("False", "false").replace("'", '"')
+    agents_json=str(agents).replace("True","true").replace("False","false").replace("'",'"')
     return f"""
 <style>
 html,body{{margin:0;padding:0;overflow:hidden;background:#0a0a14}}
@@ -224,29 +265,32 @@ BG_URL     = "https://raw.githubusercontent.com/pech3930/forex-bot/main/office_b
 SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronaut.png"
 
 if not run_btn:
-    default_agents = build_agents(
-        selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"], {})
+    default_agents=build_agents(
+        selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],{})
     st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=720,scrolling=False)
     st.markdown("""
     <div style="text-align:center;font-family:'Press Start 2P',monospace;font-size:7px;color:#333;padding:8px">
-    ← PRESS GENERATE SIGNALS TO START
+    ← PRESS ANALYZE NOW TO START
     </div>""", unsafe_allow_html=True)
 else:
-    if not selected_pairs:
+    if not api_key:
+        st.error("NO API KEY - กรุณาใส่ API Key ใน Settings > Secrets")
+    elif not selected_pairs:
         st.error("SELECT PAIRS")
     else:
-        with st.spinner("กำลังประมวลผลสัญญาณเทคนิคอลจำลอง..."):
-            time.sleep(1.2)  # เพิ่มดีเลย์สั้นๆ เพื่อให้ความรู้สึกสมจริงตอนประมวลผล
-            overview, signals, watch = generate_mock_signals(selected_pairs)
+        with st.spinner("กำลังวิเคราะห์..."):
+            articles=fetch_news()
+            raw=analyze(articles,selected_pairs,api_key)
+            overview,signals,watch=parse_result(raw,selected_pairs)
 
-        final = build_agents(selected_pairs, signals)
+        final=build_agents(selected_pairs,signals)
         st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=720,scrolling=False)
 
-        cols = st.columns(len(selected_pairs))
+        cols=st.columns(len(selected_pairs))
         for i,(p,col) in enumerate(zip(selected_pairs,cols)):
-            sig, reason = signals.get(p,("NEUTRAL","No data"))
-            sc = "#00ff41" if sig=="BULLISH" else "#ff3131" if sig=="BEARISH" else "#ffd700"
-            arrow = "▲" if sig=="BULLISH" else "▼" if sig=="BEARISH" else "◆"
+            sig,reason=signals.get(p,("NEUTRAL","No data"))
+            sc="#00ff41" if sig=="BULLISH" else "#ff3131" if sig=="BEARISH" else "#ffd700"
+            arrow="▲" if sig=="BULLISH" else "▼" if sig=="BEARISH" else "◆"
             with col:
                 st.markdown(f"""
                 <div style="background:#0d0d1a;border:2px solid {sc};padding:8px;text-align:center;margin-bottom:6px">
@@ -271,5 +315,5 @@ else:
 
         st.markdown("""
         <div style="border:2px dashed #ff3131;padding:6px 10px;font-family:'Press Start 2P',monospace;font-size:6px;color:#ff3131;margin-top:8px">
-        ⚠ NOT FINANCIAL ADVICE · SIMULATION PURPOSE ONLY
+        ⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY
         </div>""", unsafe_allow_html=True)
