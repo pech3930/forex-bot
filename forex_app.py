@@ -24,7 +24,7 @@ iframe{border:none!important}
 .news-panel::-webkit-scrollbar{width:8px}
 .news-panel::-webkit-scrollbar-track{background:#0a0a14}
 .news-panel::-webkit-scrollbar-thumb{background:#4a9eff}
-.news-title{font-family:'Press Start 2P',monospace;font-size:9px;color:#4a9eff;margin-bottom:10px;letter-spacing:1px;border-bottom:2px solid #4a9eff;padding-bottom:6px}
+.news-title{font-family:'Press Start 2P',monospace;font-size:12px;color:#4a9eff;margin-bottom:10px;letter-spacing:1px;border-bottom:2px solid #4a9eff;padding-bottom:6px}
 .news-card{background:#1a1a2e;border:2px solid #2a3f6a;padding:8px;margin-bottom:10px}
 .news-card-title{font-family:'Press Start 2P',monospace;font-size:7px;margin-bottom:6px;letter-spacing:1px}
 .news-card-body{font-family:'Press Start 2P',monospace;font-size:6px;color:#ccc;line-height:1.9}
