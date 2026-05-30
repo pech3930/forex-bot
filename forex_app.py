@@ -31,7 +31,7 @@ iframe{border:none!important}
 .signal-row{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#1a1a2e;margin:4px 0;border-left:3px solid}
 .signal-pair{font-family:'Press Start 2P',monospace;font-size:17px;color:#fff}
 .signal-tag{font-family:'Press Start 2P',monospace;font-size:6px;padding:2px 5px;border:1px solid}
-.signal-reason{font-family:'Press Start 2P',monospace;font-size:25px;color:#aaa;line-height:3.0;margin-top:20px;padding-left:5px}
+.signal-reason{font-family:'Press Start 2P',monospace;font-size:25px;color:#aaa;line-height:3.0;margin-top:5px;padding-left:5px}
 </style>
 """, unsafe_allow_html=True)
 
