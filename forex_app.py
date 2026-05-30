@@ -28,7 +28,7 @@ iframe{border:none!important}
 .news-card{background:#1a1a2e;border:2px solid #2a3f6a;padding:8px;margin-bottom:10px}
 .news-card-title{font-family:'Press Start 2P',monospace;font-size:15px;margin-bottom:6px;letter-spacing:1px}
 .news-card-body{font-family:'Press Start 2P',monospace;font-size:20px;color:#ccc;line-height:2.5}
-.signal-row{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#1a1a2e;margin:4px 0;border-left:3px solid}
+.signal-row{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;background:#1a1a2e;margin:4px 0;border-left:3px solid}
 .signal-pair{font-family:'Press Start 2P',monospace;font-size:17px;color:#fff}
 .signal-tag{font-family:'Press Start 2P',monospace;font-size:6px;padding:2px 5px;border:1px solid}
 .signal-reason{font-family:'Press Start 2P',monospace;font-size:25px;color:#aaa;line-height:3.0;margin-top:5px;padding-left:5px}
