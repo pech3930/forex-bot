@@ -59,8 +59,8 @@ with st.sidebar:
     st.markdown("---")
     st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#ffd700;margin-bottom:6px">💱 PAIRS</div>', unsafe_allow_html=True)
     selected_pairs = st.multiselect("",
-        ["EUR/USD","USD/THB","GBP/USD","USD/JPY","XAU/USD","AUD/USD"],
-        default=["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],
+        ["EUR/USD","USD/THB","GBP/USD","USD/JPY","XAU/USD","AUD/USD","EUR/JPY"],
+        default=["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD","EUR/JPY"],
         label_visibility="collapsed")
     st.markdown("---")
     st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#ffd700;margin-bottom:6px">📡 SOURCE</div>', unsafe_allow_html=True)
