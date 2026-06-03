@@ -3,10 +3,29 @@ import anthropic
 import feedparser
 import os
 import json
+import shelve
 import yfinance as yf
 from datetime import datetime, date
 
 st.set_page_config(page_title="FOREX TRADING OFFICE", page_icon="💹", layout="wide")
+
+# ── Persistent history storage ──
+def load_history():
+    try:
+        with shelve.open("/tmp/forex_history") as db:
+            return db.get("history", [])
+    except:
+        return []
+
+def save_history(history):
+    try:
+        with shelve.open("/tmp/forex_history") as db:
+            db["history"] = history
+    except:
+        pass
+
+if "history" not in st.session_state:
+    st.session_state.history = load_history()
 
 # ── Yahoo Finance symbol map ──
 YAHOO_SYMBOLS = {
@@ -20,7 +39,8 @@ def fetch_live_prices(pairs):
     prices = {}
     for p in pairs:
         sym = YAHOO_SYMBOLS.get(p)
-        if not sym: continue
+        if not sym:
+            continue
         try:
             t = yf.Ticker(sym)
             h = t.history(period="1d", interval="1m")
@@ -28,7 +48,7 @@ def fetch_live_prices(pairs):
                 price = float(h["Close"].iloc[-1])
                 prev  = float(h["Close"].iloc[0])
                 change = price - prev
-                pct    = (change/prev)*100 if prev else 0
+                pct    = (change / prev) * 100 if prev else 0
                 prices[p] = {"price": price, "change": change, "pct": pct}
         except:
             prices[p] = {"price": 0, "change": 0, "pct": 0}
@@ -66,15 +86,15 @@ iframe{border:none!important}
 def render_ticker(prices):
     if not prices:
         return '<div class="ticker-wrap"><span style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#555;padding:0 20px">กำลังโหลดราคา...</span></div>'
-    items=""
-    for p,v in prices.items():
-        col="#00ff41" if v["change"]>=0 else "#ff3131"
-        arrow="▲" if v["change"]>=0 else "▼"
-        dec=5 if "JPY" not in p and "THB" not in p else 3
-        price_str=f"{v['price']:.{dec}f}"
-        pct_str=f"{v['pct']:+.2f}%"
-        items+=f'<span class="ticker-item"><span style="color:#888">{p}</span><span style="color:#fff">{price_str}</span><span style="color:{col}">{arrow}{pct_str}</span></span>'
-    double=items+items  # double for seamless loop
+    items = ""
+    for p, v in prices.items():
+        col = "#00ff41" if v["change"] >= 0 else "#ff3131"
+        arrow = "▲" if v["change"] >= 0 else "▼"
+        dec = 5 if "JPY" not in p and "THB" not in p else 3
+        price_str = f"{v['price']:.{dec}f}"
+        pct_str = f"{v['pct']:+.2f}%"
+        items += f'<span class="ticker-item"><span style="color:#888">{p}</span><span style="color:#fff">{price_str}</span><span style="color:{col}">{arrow}{pct_str}</span></span>'
+    double = items + items
     return f'<div class="ticker-wrap"><div class="ticker-track">{double}</div></div>'
 
 # ── Header ──
@@ -123,19 +143,20 @@ if use_reuters:   RSS["Reuters"]       = "https://feeds.reuters.com/reuters/busi
 if use_investing: RSS["Investing.com"] = "https://www.investing.com/rss/news_25.rss"
 
 def fetch_news():
-    articles=[]
-    for src,url in RSS.items():
+    articles = []
+    for src, url in RSS.items():
         try:
-            feed=feedparser.parse(url)
+            feed = feedparser.parse(url)
             for e in feed.entries[:8]:
-                articles.append({"source":src,"title":e.get("title",""),"summary":e.get("summary","")[:300]})
-        except: pass
+                articles.append({"source": src, "title": e.get("title", ""), "summary": e.get("summary", "")[:300]})
+        except:
+            pass
     return articles
 
-def analyze(articles,pairs,key):
-    client=anthropic.Anthropic(api_key=key)
-    news_text="\n\n".join(f"[{a['source']}] {a['title']}\n{a['summary']}" for a in articles)
-    prompt=f"""คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์ตลาด Forex
+def analyze(articles, pairs, key):
+    client = anthropic.Anthropic(api_key=key)
+    news_text = "\n\n".join(f"[{a['source']}] {a['title']}\n{a['summary']}" for a in articles)
+    prompt = f"""คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์ตลาด Forex
 วิเคราะห์ข่าวและประเมินผลกระทบต่อ: {", ".join(pairs)}
 ข่าวสาร:\n{news_text}
 ตอบกลับในรูปแบบ JSON เท่านั้น:
@@ -146,42 +167,43 @@ def analyze(articles,pairs,key):
   }},
   "watch": "<ประเด็นที่ต้องติดตาม 2-3 ประโยคภาษาไทย>"
 }}"""
-    r=client.messages.create(model="claude-haiku-4-5-20251001",max_tokens=1500,
-        messages=[{"role":"user","content":prompt}])
+    r = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=1500,
+        messages=[{"role": "user", "content": prompt}])
     return r.content[0].text
 
-def parse_result(text,pairs):
+def parse_result(text, pairs):
     try:
-        s=text.find('{'); e=text.rfind('}')+1
-        data=json.loads(text[s:e])
-        overview=data.get("overview","วิเคราะห์สำเร็จ")
-        watch=data.get("watch","ติดตามข่าวต่อไป")
-        signals={}
+        s = text.find('{')
+        e = text.rfind('}') + 1
+        data = json.loads(text[s:e])
+        overview = data.get("overview", "วิเคราะห์สำเร็จ")
+        watch = data.get("watch", "ติดตามข่าวต่อไป")
+        signals = {}
         for p in pairs:
-            d=data.get("signals",{}).get(p,{"signal":"NEUTRAL","reason":"รอสัญญาณ"})
-            sig=d.get("signal","NEUTRAL").upper()
-            signals[p]=(sig,d.get("reason",""))
-        return overview,signals,watch
+            d = data.get("signals", {}).get(p, {"signal": "NEUTRAL", "reason": "รอสัญญาณ"})
+            sig = d.get("signal", "NEUTRAL").upper()
+            signals[p] = (sig, d.get("reason", ""))
+        return overview, signals, watch
     except:
-        return "วิเคราะห์สำเร็จ",{p:("NEUTRAL","กำลังประมวลผล") for p in pairs},"ติดตามข่าวต่อไป"
+        return "วิเคราะห์สำเร็จ", {p: ("NEUTRAL", "กำลังประมวลผล") for p in pairs}, "ติดตามข่าวต่อไป"
 
-def build_agents(pairs,signals):
-    tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
-    desk_positions=[(0.34,0.65),(0.51,0.54),(0.80,0.72),(0.62,0.90),(0.67,0.57),(0.79,0.63)]
-    agents=[]
-    for i,p in enumerate(pairs):
-        sig,reason=signals.get(p,("NEUTRAL","Analyzing..."))
-        msgs={"BULLISH":[p+"!","▲ BUY!","Bullish!","UP!"],
-              "BEARISH":[p+"!","▼ SELL!","Bearish!","DOWN!"],
-              "NEUTRAL":[p,"◆ WAIT","Watch","..."]}.get(sig,["..."])
-        dx,dy=desk_positions[i%len(desk_positions)]
-        agents.append({"pair":p,"signal":sig,"reason":reason,"px":dx,"py":dy,
-                       "minX":dx-0.03,"maxX":dx+0.03,"tint":tints[i%len(tints)],
-                       "msgs":msgs,"fr":i*20,"walking":True,"dir":1 if i%2==0 else -1})
+def build_agents(pairs, signals):
+    tints = ['#44aaff', '#ffaa44', '#aa88ff', '#44ffaa', '#ffdd44', '#ff88aa']
+    desk_positions = [(0.34, 0.65), (0.51, 0.54), (0.80, 0.72), (0.62, 0.90), (0.67, 0.57), (0.79, 0.63)]
+    agents = []
+    for i, p in enumerate(pairs):
+        sig, reason = signals.get(p, ("NEUTRAL", "Analyzing..."))
+        msgs = {"BULLISH": [p + "!", "▲ BUY!", "Bullish!", "UP!"],
+                "BEARISH": [p + "!", "▼ SELL!", "Bearish!", "DOWN!"],
+                "NEUTRAL": [p, "◆ WAIT", "Watch", "..."]}.get(sig, ["..."])
+        dx, dy = desk_positions[i % len(desk_positions)]
+        agents.append({"pair": p, "signal": sig, "reason": reason, "px": dx, "py": dy,
+                       "minX": dx - 0.03, "maxX": dx + 0.03, "tint": tints[i % len(tints)],
+                       "msgs": msgs, "fr": i * 20, "walking": True, "dir": 1 if i % 2 == 0 else -1})
     return agents
 
 def render_canvas(agents, bg_url, sprite_url):
-    agents_json=str(agents).replace("True","true").replace("False","false").replace("'",'"')
+    agents_json = str(agents).replace("True", "true").replace("False", "false").replace("'", '"')
     return f"""
 <style>
 html,body{{margin:0;padding:0;overflow:hidden;background:#0a0a14}}
@@ -211,87 +233,89 @@ function loop(){{tick++;calcBgBounds();ctx.clearRect(0,0,cv.width,cv.height);upd
 loop();
 </script>"""
 
-# ── Accuracy & Leaderboard (stored in session) ──
-if "history" not in st.session_state:
-    st.session_state.history = []  # list of {date, pair, signal, result}
-
+# ── Accuracy & Leaderboard ──
 def save_signal_history(signals, today_str):
-    for p,(sig,_) in signals.items():
-        exists=[h for h in st.session_state.history if h["date"]==today_str and h["pair"]==p]
+    for p, (sig, _) in signals.items():
+        exists = [h for h in st.session_state.history if h["date"] == today_str and h["pair"] == p]
         if not exists:
-            st.session_state.history.append({"date":today_str,"pair":p,"signal":sig,"result":"pending"})
+            st.session_state.history.append({"date": today_str, "pair": p, "signal": sig, "result": "pending"})
+    save_history(st.session_state.history)
 
 def render_accuracy_panel(prices):
     history = st.session_state.history
-    # auto-check results: compare signal direction vs actual price change
-    today_str = date.today().strftime("%Y-%m-%d")
     for h in history:
-        if h["result"]=="pending" and h["pair"] in prices:
+        if h["result"] == "pending" and h["pair"] in prices:
             pv = prices[h["pair"]]
             if abs(pv["change"]) > 0.0001:
-                if h["signal"]=="BULLISH" and pv["change"]>0: h["result"]="✅"
-                elif h["signal"]=="BEARISH" and pv["change"]<0: h["result"]="✅"
-                elif h["signal"]=="NEUTRAL": h["result"]="➖"
-                else: h["result"]="❌"
+                if h["signal"] == "BULLISH" and pv["change"] > 0:
+                    h["result"] = "✅"
+                elif h["signal"] == "BEARISH" and pv["change"] < 0:
+                    h["result"] = "✅"
+                elif h["signal"] == "NEUTRAL":
+                    h["result"] = "➖"
+                else:
+                    h["result"] = "❌"
+    save_history(history)
 
-    # stats
-    checked=[h for h in history if h["result"] in ["✅","❌"]]
-    correct=[h for h in checked if h["result"]=="✅"]
-    acc=int(len(correct)/len(checked)*100) if checked else 0
-    acc_col="#00ff41" if acc>=60 else "#ffd700" if acc>=40 else "#ff3131"
+    checked = [h for h in history if h["result"] in ["✅", "❌"]]
+    correct = [h for h in checked if h["result"] == "✅"]
+    acc = int(len(correct) / len(checked) * 100) if checked else 0
+    acc_col = "#00ff41" if acc >= 60 else "#ffd700" if acc >= 40 else "#ff3131"
+    total_txt = f"{len(correct)}/{len(checked)}" if checked else "0/0"
 
-    # leaderboard by pair
-    pair_stats={}
+    pair_stats = {}
     for h in checked:
-        p=h["pair"]
-        if p not in pair_stats: pair_stats[p]={"win":0,"total":0}
-        pair_stats[p]["total"]+=1
-        if h["result"]=="✅": pair_stats[p]["win"]+=1
-    sorted_pairs=sorted(pair_stats.items(), key=lambda x:-x[1]["win"]/max(x[1]["total"],1))
+        p = h["pair"]
+        if p not in pair_stats:
+            pair_stats[p] = {"win": 0, "total": 0}
+        pair_stats[p]["total"] += 1
+        if h["result"] == "✅":
+            pair_stats[p]["win"] += 1
+    sorted_pairs = sorted(pair_stats.items(), key=lambda x: -x[1]["win"] / max(x[1]["total"], 1))
 
-    rows=""
-    for rank,(p,s) in enumerate(sorted_pairs[:5],1):
-        pct=int(s["win"]/s["total"]*100)
-        pc="#00ff41" if pct>=60 else "#ffd700" if pct>=40 else "#ff3131"
-        medal="🥇" if rank==1 else "🥈" if rank==2 else "🥉" if rank==3 else f"#{rank}"
-        rows+=f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:12px">{medal} {p}</span><span style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:{pc}">{pct}% ({s["win"]}/{s["total"]})</span></div>'
+    rows = ""
+    for rank, (p, s) in enumerate(sorted_pairs[:6], 1):
+        pct = int(s["win"] / s["total"] * 100)
+        pc = "#00ff41" if pct >= 60 else "#ffd700" if pct >= 40 else "#ff3131"
+        medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
+        rows += f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:12px">{medal} {p}</span><span style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:{pc}">{pct}% ({s["win"]}/{s["total"]})</span></div>'
 
     if not rows:
-        rows='<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#555;padding:8px 0">กด ANALYZE เพื่อเริ่มเก็บข้อมูล</div>'
+        rows = '<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#555;padding:8px 0">กด ANALYZE เพื่อเริ่มเก็บข้อมูล</div>'
 
-    return f'<div class="news-card" style="border-color:#aa88ff"><div class="news-card-title" style="color:#aa88ff">🎯 AI ACCURACY & LEADERBOARD</div><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;margin-bottom:8px;border-bottom:2px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:13px;color:#888">OVERALL ACC.</span><span style="font-family:\'Press Start 2P\',monospace;font-size:20px;color:{acc_col}">{acc}%</span></div><div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#4a9eff;margin-bottom:6px">🏆 LEADERBOARD</div>{rows}</div>'
+    return f'<div class="news-card" style="border-color:#aa88ff"><div class="news-card-title" style="color:#aa88ff">🎯 AI ACCURACY & LEADERBOARD</div><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;margin-bottom:8px;border-bottom:2px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:13px;color:#888">OVERALL ACC. ({total_txt})</span><span style="font-family:\'Press Start 2P\',monospace;font-size:20px;color:{acc_col}">{acc}%</span></div><div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#4a9eff;margin-bottom:6px">🏆 LEADERBOARD</div>{rows}</div>'
 
 def render_news_panel(overview, signals, watch, prices):
-    signal_rows=""
-    for p,(sig,reason) in signals.items():
-        sc="#00ff41" if sig=="BULLISH" else "#ff3131" if sig=="BEARISH" else "#ffd700"
-        arrow="▲" if sig=="BULLISH" else "▼" if sig=="BEARISH" else "◆"
-        pv=prices.get(p,{})
-        dec=5 if "JPY" not in p and "THB" not in p else 3
-        price_str=f'{pv["price"]:.{dec}f}' if pv.get("price") else "---"
-        pc="#00ff41" if pv.get("change",0)>=0 else "#ff3131"
-        pa="▲" if pv.get("change",0)>=0 else "▼"
-        pct_str=f'{pv["pct"]:+.2f}%' if pv.get("pct") else ""
-        signal_rows+=f'<div style="background:#1a1a2e;border-left:3px solid {sc};padding:6px 8px;margin:6px 0"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#fff">{p}</span><div style="display:flex;gap:8px;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:{pc}">{pa}{price_str} <span style="font-size:10px">{pct_str}</span></span><span style="font-family:\'Press Start 2P\',monospace;font-size:13px;color:{sc};border:1px solid {sc};padding:2px 5px">{arrow} {sig}</span></div></div><div style="font-family:\'Press Start 2P\',monospace;font-size:30px;color:#aaa;line-height:1.9;margin-top:5px">{reason}</div></div>'
+    signal_rows = ""
+    for p, (sig, reason) in signals.items():
+        sc = "#00ff41" if sig == "BULLISH" else "#ff3131" if sig == "BEARISH" else "#ffd700"
+        arrow = "▲" if sig == "BULLISH" else "▼" if sig == "BEARISH" else "◆"
+        pv = prices.get(p, {})
+        dec = 5 if "JPY" not in p and "THB" not in p else 3
+        price_str = f'{pv["price"]:.{dec}f}' if pv.get("price") else "---"
+        pc = "#00ff41" if pv.get("change", 0) >= 0 else "#ff3131"
+        pa = "▲" if pv.get("change", 0) >= 0 else "▼"
+        pct_str = f'{pv["pct"]:+.2f}%' if pv.get("pct") else ""
+        signal_rows += f'<div style="background:#1a1a2e;border-left:3px solid {sc};padding:8px 10px;margin:8px 0"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:18px;color:#fff">{p}</span><div style="display:flex;gap:8px;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:{pc}">{pa}{price_str} <span style="font-size:13px">{pct_str}</span></span><span style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:{sc};border:1px solid {sc};padding:2px 6px">{arrow} {sig}</span></div></div><div style="font-family:\'Press Start 2P\',monospace;font-size:30px;color:#aaa;line-height:2.0;margin-top:8px">{reason}</div></div>'
 
     accuracy_html = render_accuracy_panel(prices)
-    html=f'<div class="news-panel"><div class="news-title">📊 ANALYSIS DASHBOARD</div><div class="news-card" style="border-color:#4a9eff"><div class="news-card-title" style="color:#4a9eff">📋 OVERVIEW</div><div class="news-card-body">{overview}</div></div><div class="news-card" style="border-color:#00ff41"><div class="news-card-title" style="color:#00ff41">⚡ SIGNALS</div>{signal_rows}</div><div class="news-card" style="border-color:#ffd700"><div class="news-card-title" style="color:#ffd700">⚠ WATCH</div><div class="news-card-body">{watch}</div></div>{accuracy_html}<div style="border:2px dashed #ff3131;padding:6px 8px;font-family:\'Press Start 2P\',monospace;font-size:11px;color:#ff3131;margin-top:8px;line-height:1.7">⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY</div></div>'
+    html = f'<div class="news-panel"><div class="news-title">📊 ANALYSIS DASHBOARD</div><div class="news-card" style="border-color:#4a9eff"><div class="news-card-title" style="color:#4a9eff">📋 OVERVIEW</div><div class="news-card-body">{overview}</div></div><div class="news-card" style="border-color:#00ff41"><div class="news-card-title" style="color:#00ff41">⚡ SIGNALS</div>{signal_rows}</div><div class="news-card" style="border-color:#ffd700"><div class="news-card-title" style="color:#ffd700">⚠ WATCH</div><div class="news-card-body">{watch}</div></div>{accuracy_html}<div style="border:2px dashed #ff3131;padding:6px 8px;font-family:\'Press Start 2P\',monospace;font-size:11px;color:#ff3131;margin-top:8px;line-height:1.7">⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY</div></div>'
     return html
 
 BG_URL     = "https://raw.githubusercontent.com/pech3930/forex-bot/main/office_bg.png"
 SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronaut.png"
 
-pairs_for_ticker = selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"]
+pairs_for_ticker = selected_pairs if selected_pairs else ["EUR/USD", "USD/THB", "USD/JPY", "GBP/USD", "XAU/USD"]
 live_prices = fetch_live_prices(pairs_for_ticker)
 
 # ── Ticker bar (always shown) ──
 st.markdown(render_ticker(live_prices), unsafe_allow_html=True)
 
 if not run_btn:
-    default_agents=build_agents(pairs_for_ticker,{})
+    default_agents = build_agents(pairs_for_ticker, {})
     col_room, col_news = st.columns([2, 1])
     with col_room:
-        st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=720,scrolling=False)
+        st.components.v1.html(render_canvas(default_agents, BG_URL, SPRITE_URL), height=720, scrolling=False)
     with col_news:
         st.markdown(f'<div class="news-panel"><div class="news-title">📊 ANALYSIS DASHBOARD</div><div class="news-card" style="border-color:#4a9eff"><div class="news-card-title" style="color:#4a9eff">📋 STATUS</div><div class="news-card-body">กดปุ่ม ANALYZE NOW เพื่อเริ่มวิเคราะห์ตลาด</div></div><div class="news-card" style="border-color:#ffd700"><div class="news-card-title" style="color:#ffd700">💡 INFO</div><div class="news-card-body">AI จะดึงข่าว Reuters + Investing.com มาวิเคราะห์</div></div>{render_accuracy_panel(live_prices)}</div>', unsafe_allow_html=True)
 else:
@@ -301,18 +325,18 @@ else:
         st.error("SELECT PAIRS")
     else:
         with st.spinner("กำลังวิเคราะห์..."):
-            articles=fetch_news()
+            articles = fetch_news()
             try:
-                raw=analyze(articles,selected_pairs,api_key)
-                overview,signals,watch=parse_result(raw,selected_pairs)
+                raw = analyze(articles, selected_pairs, api_key)
+                overview, signals, watch = parse_result(raw, selected_pairs)
                 save_signal_history(signals, date.today().strftime("%Y-%m-%d"))
             except Exception as e:
                 st.error(f"API Error: {type(e).__name__}: {e}")
-                overview,signals,watch="Error",{p:("NEUTRAL","API Error") for p in selected_pairs},"Check API Key"
+                overview, signals, watch = "Error", {p: ("NEUTRAL", "API Error") for p in selected_pairs}, "Check API Key"
 
-        final=build_agents(selected_pairs,signals)
+        final = build_agents(selected_pairs, signals)
         col_room, col_news = st.columns([2, 1])
         with col_room:
-            st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=720,scrolling=False)
+            st.components.v1.html(render_canvas(final, BG_URL, SPRITE_URL), height=720, scrolling=False)
         with col_news:
-            st.markdown(render_news_panel(overview,signals,watch,live_prices), unsafe_allow_html=True)
+            st.markdown(render_news_panel(overview, signals, watch, live_prices), unsafe_allow_html=True)
