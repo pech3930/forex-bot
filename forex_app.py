@@ -272,7 +272,38 @@ function loop(){{
 loop();
 </script>
 """
+@st.cache_data(ttl=60)
+def fetch_account_data():
+    """Fetch account info from MetaApi.cloud REST API"""
+    try:
+        import urllib.request
+        import urllib.error
+        token = st.secrets["METAAPI_TOKEN"]
+        account_id = st.secrets["METAAPI_ACCOUNT_ID"]
+        url = f"https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/{account_id}/account-information"
+        req = urllib.request.Request(url, headers={"auth-token": token})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read().decode())
+        return {
+            "balance": data.get("balance", 0),
+            "equity": data.get("equity", 0),
+            "profit": data.get("profit", 0),
+            "currency": data.get("currency", "USD"),
+            "ok": True,
+            "error": None,
+        }
+    except Exception as e:
+        return {"balance": 0, "equity": 0, "profit": 0, "currency": "USD", "ok": False, "error": str(e)}
 
+def render_account_panel():
+    """Render MY ACCOUNT panel showing live trading data from Vantage via MetaApi"""
+    d = fetch_account_data()
+    if not d["ok"]:
+        return f'<div class="news-card" style="border-color:#ff3131;margin-bottom:10px"><div class="news-card-title" style="color:#ff3131">💰 MY ACCOUNT</div><div class="news-card-body" style="color:#ff8888;font-size:14px">⚠ ไม่สามารถเชื่อมต่อกับบัญชี Vantage<br>ตรวจสอบ METAAPI_TOKEN และ METAAPI_ACCOUNT_ID ใน Secrets</div></div>'
+    pc = "#00ff41" if d["profit"] >= 0 else "#ff3131"
+    parrow = "▲" if d["profit"] >= 0 else "▼"
+    cur = d["currency"]
+    return f'<div class="news-card" style="border-color:#ffd700;margin-bottom:10px"><div class="news-card-title" style="color:#ffd700">💰 MY ACCOUNT (VANTAGE)</div><div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#888">BALANCE</span><span style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:#fff">{d["balance"]:,.2f} {cur}</span></div><div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#888">EQUITY</span><span style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:#4a9eff">{d["equity"]:,.2f} {cur}</span></div><div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#888">PROFIT TODAY</span><span style="font-family:\'Press Start 2P\',monospace;font-size:18px;color:{pc}">{parrow} {d["profit"]:+,.2f} {cur}</span></div></div>'
 def render_news_panel(overview, signals, watch):
     """Build right-side news/analysis panel HTML"""
     signal_rows=""
