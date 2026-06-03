@@ -3,9 +3,36 @@ import anthropic
 import feedparser
 import os
 import json
-from datetime import datetime
+import yfinance as yf
+from datetime import datetime, date
 
 st.set_page_config(page_title="FOREX TRADING OFFICE", page_icon="💹", layout="wide")
+
+# ── Yahoo Finance symbol map ──
+YAHOO_SYMBOLS = {
+    "EUR/USD": "EURUSD=X", "USD/THB": "USDTHB=X", "GBP/USD": "GBPUSD=X",
+    "USD/JPY": "USDJPY=X", "XAU/USD": "GC=F",    "AUD/USD": "AUDUSD=X",
+    "EUR/JPY": "EURJPY=X",
+}
+
+@st.cache_data(ttl=60)
+def fetch_live_prices(pairs):
+    prices = {}
+    for p in pairs:
+        sym = YAHOO_SYMBOLS.get(p)
+        if not sym: continue
+        try:
+            t = yf.Ticker(sym)
+            h = t.history(period="1d", interval="1m")
+            if not h.empty:
+                price = float(h["Close"].iloc[-1])
+                prev  = float(h["Close"].iloc[0])
+                change = price - prev
+                pct    = (change/prev)*100 if prev else 0
+                prices[p] = {"price": price, "change": change, "pct": pct}
+        except:
+            prices[p] = {"price": 0, "change": 0, "pct": 0}
+    return prices
 
 st.markdown("""
 <style>
@@ -28,16 +55,32 @@ iframe{border:none!important}
 .news-card{background:#1a1a2e;border:2px solid #2a3f6a;padding:8px;margin-bottom:10px}
 .news-card-title{font-family:'Press Start 2P',monospace;font-size:15px;margin-bottom:6px;letter-spacing:1px}
 .news-card-body{font-family:'Press Start 2P',monospace;font-size:20px;color:#ccc;line-height:2.5}
-.signal-row{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#1a1a2e;margin:4px 0;border-left:3px solid}
-.signal-pair{font-family:'Press Start 2P',monospace;font-size:17px;color:#fff}
-.signal-tag{font-family:'Press Start 2P',monospace;font-size:6px;padding:2px 5px;border:1px solid}
-.signal-reason{font-family:'Press Start 2P',monospace;font-size:25px;color:#aaa;line-height:3.0;margin-top:5px;padding-left:5px}
+.ticker-wrap{width:100%;background:#000;border-top:2px solid #4a9eff;border-bottom:2px solid #4a9eff;overflow:hidden;padding:6px 0;margin-bottom:10px}
+.ticker-track{display:inline-flex;gap:40px;animation:ticker 30s linear infinite;white-space:nowrap}
+@keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.ticker-item{font-family:'Press Start 2P',monospace;font-size:11px;display:inline-flex;align-items:center;gap:8px}
 </style>
 """, unsafe_allow_html=True)
 
+# ── Ticker bar ──
+def render_ticker(prices):
+    if not prices:
+        return '<div class="ticker-wrap"><span style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#555;padding:0 20px">กำลังโหลดราคา...</span></div>'
+    items=""
+    for p,v in prices.items():
+        col="#00ff41" if v["change"]>=0 else "#ff3131"
+        arrow="▲" if v["change"]>=0 else "▼"
+        dec=5 if "JPY" not in p and "THB" not in p else 3
+        price_str=f"{v['price']:.{dec}f}"
+        pct_str=f"{v['pct']:+.2f}%"
+        items+=f'<span class="ticker-item"><span style="color:#888">{p}</span><span style="color:#fff">{price_str}</span><span style="color:{col}">{arrow}{pct_str}</span></span>'
+    double=items+items  # double for seamless loop
+    return f'<div class="ticker-wrap"><div class="ticker-track">{double}</div></div>'
+
+# ── Header ──
 st.markdown(f"""
 <div style="font-family:'Press Start 2P',monospace;font-size:10px;background:#000;
-  border:3px solid #4a9eff;padding:10px 16px;box-shadow:6px 6px 0 #1a4a7a;margin-bottom:10px;
+  border:3px solid #4a9eff;padding:10px 16px;box-shadow:6px 6px 0 #1a4a7a;margin-bottom:6px;
   display:flex;justify-content:space-between;align-items:center">
   <span style="color:#4a9eff">💹 FOREX TRADING OFFICE</span>
   <span style="font-size:7px;color:#ffd700">POWERED BY CLAUDE AI</span>
@@ -60,7 +103,7 @@ with st.sidebar:
     st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#ffd700;margin-bottom:6px">💱 PAIRS</div>', unsafe_allow_html=True)
     selected_pairs = st.multiselect("",
         ["EUR/USD","USD/THB","GBP/USD","USD/JPY","XAU/USD","AUD/USD","EUR/JPY"],
-        default=["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD","EUR/JPY"],
+        default=["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],
         label_visibility="collapsed")
     st.markdown("---")
     st.markdown('<div style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:#ffd700;margin-bottom:6px">📡 SOURCE</div>', unsafe_allow_html=True)
@@ -86,8 +129,7 @@ def fetch_news():
             feed=feedparser.parse(url)
             for e in feed.entries[:8]:
                 articles.append({"source":src,"title":e.get("title",""),"summary":e.get("summary","")[:300]})
-        except:
-            pass
+        except: pass
     return articles
 
 def analyze(articles,pairs,key):
@@ -125,14 +167,7 @@ def parse_result(text,pairs):
 
 def build_agents(pairs,signals):
     tints=['#44aaff','#ffaa44','#aa88ff','#44ffaa','#ffdd44','#ff88aa']
-    desk_positions=[
-        (0.34, 0.65),
-        (0.51, 0.54),
-        (0.80, 0.72),
-        (0.62, 0.90),
-        (0.67, 0.57),
-        (0.79, 0.63),
-    ]
+    desk_positions=[(0.34,0.65),(0.51,0.54),(0.80,0.72),(0.62,0.90),(0.67,0.57),(0.79,0.63)]
     agents=[]
     for i,p in enumerate(pairs):
         sig,reason=signals.get(p,("NEUTRAL","Analyzing..."))
@@ -140,11 +175,9 @@ def build_agents(pairs,signals):
               "BEARISH":[p+"!","▼ SELL!","Bearish!","DOWN!"],
               "NEUTRAL":[p,"◆ WAIT","Watch","..."]}.get(sig,["..."])
         dx,dy=desk_positions[i%len(desk_positions)]
-        agents.append({"pair":p,"signal":sig,"reason":reason,
-                       "px":dx,"py":dy,
-                       "minX":dx-0.03,"maxX":dx+0.03,
-                       "tint":tints[i%len(tints)],"msgs":msgs,"fr":i*20,
-                       "walking":True,"dir":1 if i%2==0 else -1})
+        agents.append({"pair":p,"signal":sig,"reason":reason,"px":dx,"py":dy,
+                       "minX":dx-0.03,"maxX":dx+0.03,"tint":tints[i%len(tints)],
+                       "msgs":msgs,"fr":i*20,"walking":True,"dir":1 if i%2==0 else -1})
     return agents
 
 def render_canvas(agents, bg_url, sprite_url):
@@ -152,196 +185,118 @@ def render_canvas(agents, bg_url, sprite_url):
     return f"""
 <style>
 html,body{{margin:0;padding:0;overflow:hidden;background:#0a0a14}}
-.scene{{position:relative;width:100%;height:700px;background:#0a0a14;
-  display:flex;align-items:center;justify-content:center}}
-.bg{{width:100%;height:100%;
-  background:url('{bg_url}') center/contain no-repeat}}
+.scene{{position:relative;width:100%;height:700px;background:#0a0a14;display:flex;align-items:center;justify-content:center}}
+.bg{{width:100%;height:100%;background:url('{bg_url}') center/contain no-repeat}}
 canvas{{position:absolute;top:0;left:0;width:100%;height:100%}}
 </style>
-<div class="scene">
-  <div class="bg"></div>
-  <canvas id="fc"></canvas>
-</div>
+<div class="scene"><div class="bg"></div><canvas id="fc"></canvas></div>
 <script>
-const SPRITE_URL="{sprite_url}";
-const AGENTS={agents_json};
-const cv=document.getElementById('fc');
-const ctx=cv.getContext('2d');
+const SPRITE_URL="{sprite_url}";const AGENTS={agents_json};
+const cv=document.getElementById('fc'),ctx=cv.getContext('2d');
 ctx.imageSmoothingEnabled=false;
-
-function resize(){{
-  const scene=document.querySelector('.scene');
-  cv.width=scene.offsetWidth;
-  cv.height=scene.offsetHeight;
-}}
-setTimeout(resize,200);
-window.addEventListener('resize',resize);
-
-const bgImg=new Image();
-bgImg.src="{bg_url}";
+function resize(){{const s=document.querySelector('.scene');cv.width=s.offsetWidth;cv.height=s.offsetHeight;}}
+setTimeout(resize,200);window.addEventListener('resize',resize);
+const bgImg=new Image();bgImg.src="{bg_url}";
 let bgX=0,bgY=0,bgW=0,bgH=0;
-function calcBgBounds(){{
-  if(bgImg.width===0) return;
-  const ratio=bgImg.width/bgImg.height;
-  const sceneW=cv.width, sceneH=cv.height;
-  const sceneRatio=sceneW/sceneH;
-  if(sceneRatio>ratio){{
-    bgH=sceneH; bgW=sceneH*ratio;
-  }} else {{
-    bgW=sceneW; bgH=sceneW/ratio;
-  }}
-  bgX=(sceneW-bgW)/2;
-  bgY=(sceneH-bgH)/2;
-}}
-
-const spr=new Image();
-spr.crossOrigin='anonymous';
-spr.src=SPRITE_URL;
-let sprOK=false, FW=0, FH=0;
+function calcBgBounds(){{if(!bgImg.width)return;const r=bgImg.width/bgImg.height,sw=cv.width,sh=cv.height,sr=sw/sh;if(sr>r){{bgH=sh;bgW=sh*r;}}else{{bgW=sw;bgH=sw/r;}}bgX=(sw-bgW)/2;bgY=(sh-bgH)/2;}}
+const spr=new Image();spr.crossOrigin='anonymous';spr.src=SPRITE_URL;
+let sprOK=false,FW=0,FH=0;
 spr.onload=()=>{{sprOK=true;FW=Math.round(spr.width/12);FH=spr.height;}};
-
-const WALK=[8,9,10,11], STAND=8, S=3;
-let tick=0;
-
-function drawSprite(x,y,frame,dir){{
-  if(!sprOK) return;
-  const dw=FW*S, dh=FH*S;
-  ctx.save();
-  if(dir<0){{ctx.translate(x+dw,y);ctx.scale(-1,1);ctx.drawImage(spr,frame*FW,0,FW,FH,0,0,dw,dh);}}
-  else ctx.drawImage(spr,frame*FW,0,FW,FH,x,y,dw,dh);
-  ctx.restore();
-}}
-
-function drawBubble(cx,cy,text,sig){{
-  const col=sig==='BULLISH'?'#00ff41':sig==='BEARISH'?'#ff3131':'#ffd700';
-  ctx.font='bold 9px "Press Start 2P",monospace';
-  const tw=ctx.measureText(text).width;
-  const bw=tw+16,bh=22,bx=cx-bw/2,by=cy-bh-12;
-  ctx.fillStyle='#fff';ctx.fillRect(bx-2,by-2,bw+4,bh+4);
-  ctx.fillStyle='#000';ctx.fillRect(bx,by,bw,bh);
-  ctx.fillStyle=col;ctx.fillRect(bx,by,bw,4);
-  ctx.fillStyle='#fff';ctx.fillText(text,bx+8,by+16);
-  ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(cx-5,by+bh+2);ctx.lineTo(cx+5,by+bh+2);ctx.lineTo(cx,by+bh+11);ctx.fill();
-  ctx.fillStyle='#000';ctx.beginPath();ctx.moveTo(cx-3,by+bh+2);ctx.lineTo(cx+3,by+bh+2);ctx.lineTo(cx,by+bh+9);ctx.fill();
-}}
-
-function drawAgent(a){{
-  if(!sprOK||bgW===0) return;
-  const dw=FW*S, dh=FH*S;
-  const x=bgX + a.px*bgW - dw/2;
-  const y=bgY + a.py*bgH - dh;
-  const frame=a.walking?WALK[Math.floor(a.fr/6)%4]:STAND;
-  ctx.fillStyle='rgba(0,0,0,0.4)';
-  ctx.beginPath();ctx.ellipse(x+dw/2,y+dh,dw/2.2,5,0,0,Math.PI*2);ctx.fill();
-  drawSprite(x,y,frame,a.dir);
-  const mi=Math.floor((tick+AGENTS.indexOf(a)*40)/100)%a.msgs.length;
-  drawBubble(x+dw/2,y,a.msgs[mi],a.signal);
-}}
-
-function updateAgents(){{
-  AGENTS.forEach(a=>{{
-    if(a.walking){{
-      a.px+=a.dir*0.001;
-      a.fr+=1;
-      if(a.px>a.maxX){{a.px=a.maxX;a.dir=-1;}}
-      if(a.px<a.minX){{a.px=a.minX;a.dir=1;}}
-    }}
-    if(Math.random()<0.004){{
-      a.walking=false;
-      setTimeout(()=>a.walking=true,1500+Math.random()*2500);
-    }}
-  }});
-}}
-
-function loop(){{
-  tick++;
-  calcBgBounds();
-  ctx.clearRect(0,0,cv.width,cv.height);
-  updateAgents();
-  [...AGENTS].sort((a,b)=>a.py-b.py).forEach(a=>drawAgent(a));
-  const n=new Date();
-  const ts=n.getHours().toString().padStart(2,'0')+':'+
-           n.getMinutes().toString().padStart(2,'0')+':'+
-           n.getSeconds().toString().padStart(2,'0');
-  ctx.fillStyle='rgba(0,0,0,0.8)';ctx.fillRect(cv.width-105,8,98,20);
-  ctx.strokeStyle='#4a9eff';ctx.lineWidth=1;ctx.strokeRect(cv.width-105,8,98,20);
-  ctx.fillStyle='#00ff41';ctx.font='9px "Press Start 2P",monospace';
-  ctx.fillText(ts,cv.width-98,22);
-  requestAnimationFrame(loop);
-}}
+const WALK=[8,9,10,11],STAND=8,S=3;let tick=0;
+function drawSprite(x,y,f,d){{if(!sprOK)return;const dw=FW*S,dh=FH*S;ctx.save();if(d<0){{ctx.translate(x+dw,y);ctx.scale(-1,1);ctx.drawImage(spr,f*FW,0,FW,FH,0,0,dw,dh);}}else ctx.drawImage(spr,f*FW,0,FW,FH,x,y,dw,dh);ctx.restore();}}
+function drawBubble(cx,cy,text,sig){{const col=sig==='BULLISH'?'#00ff41':sig==='BEARISH'?'#ff3131':'#ffd700';ctx.font='bold 9px "Press Start 2P",monospace';const tw=ctx.measureText(text).width,bw=tw+16,bh=22,bx=cx-bw/2,by=cy-bh-12;ctx.fillStyle='#fff';ctx.fillRect(bx-2,by-2,bw+4,bh+4);ctx.fillStyle='#000';ctx.fillRect(bx,by,bw,bh);ctx.fillStyle=col;ctx.fillRect(bx,by,bw,4);ctx.fillStyle='#fff';ctx.fillText(text,bx+8,by+16);ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(cx-5,by+bh+2);ctx.lineTo(cx+5,by+bh+2);ctx.lineTo(cx,by+bh+11);ctx.fill();ctx.fillStyle='#000';ctx.beginPath();ctx.moveTo(cx-3,by+bh+2);ctx.lineTo(cx+3,by+bh+2);ctx.lineTo(cx,by+bh+9);ctx.fill();}}
+function drawAgent(a){{if(!sprOK||!bgW)return;const dw=FW*S,dh=FH*S,x=bgX+a.px*bgW-dw/2,y=bgY+a.py*bgH-dh,f=a.walking?WALK[Math.floor(a.fr/6)%4]:STAND;ctx.fillStyle='rgba(0,0,0,0.4)';ctx.beginPath();ctx.ellipse(x+dw/2,y+dh,dw/2.2,5,0,0,Math.PI*2);ctx.fill();drawSprite(x,y,f,a.dir);const mi=Math.floor((tick+AGENTS.indexOf(a)*40)/100)%a.msgs.length;drawBubble(x+dw/2,y,a.msgs[mi],a.signal);}}
+function updateAgents(){{AGENTS.forEach(a=>{{if(a.walking){{a.px+=a.dir*0.001;a.fr+=1;if(a.px>a.maxX){{a.px=a.maxX;a.dir=-1;}}if(a.px<a.minX){{a.px=a.minX;a.dir=1;}}}}if(Math.random()<0.004){{a.walking=false;setTimeout(()=>a.walking=true,1500+Math.random()*2500);}}}});}}
+function loop(){{tick++;calcBgBounds();ctx.clearRect(0,0,cv.width,cv.height);updateAgents();[...AGENTS].sort((a,b)=>a.py-b.py).forEach(a=>drawAgent(a));const n=new Date(),ts=n.getHours().toString().padStart(2,'0')+':'+n.getMinutes().toString().padStart(2,'0')+':'+n.getSeconds().toString().padStart(2,'0');ctx.fillStyle='rgba(0,0,0,0.8)';ctx.fillRect(cv.width-105,8,98,20);ctx.strokeStyle='#4a9eff';ctx.lineWidth=1;ctx.strokeRect(cv.width-105,8,98,20);ctx.fillStyle='#00ff41';ctx.font='9px "Press Start 2P",monospace';ctx.fillText(ts,cv.width-98,22);requestAnimationFrame(loop);}}
 loop();
-</script>
-"""
-@st.cache_data(ttl=60)
-def fetch_account_data():
-    """Fetch account info from MetaApi.cloud REST API"""
-    try:
-        import urllib.request
-        import urllib.error
-        token = st.secrets["METAAPI_TOKEN"]
-        account_id = st.secrets["METAAPI_ACCOUNT_ID"]
-        url = f"https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/{account_id}/account-information"
-        req = urllib.request.Request(url, headers={"auth-token": token})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            data = json.loads(r.read().decode())
-        return {
-            "balance": data.get("balance", 0),
-            "equity": data.get("equity", 0),
-            "profit": data.get("profit", 0),
-            "currency": data.get("currency", "USD"),
-            "ok": True,
-            "error": None,
-        }
-    except Exception as e:
-        return {"balance": 0, "equity": 0, "profit": 0, "currency": "USD", "ok": False, "error": str(e)}
+</script>"""
 
-def render_account_panel():
-    """Render MY ACCOUNT panel showing live trading data from Vantage via MetaApi"""
-    d = fetch_account_data()
-    if not d["ok"]:
-        return f'<div class="news-card" style="border-color:#ff3131;margin-bottom:10px"><div class="news-card-title" style="color:#ff3131">💰 MY ACCOUNT</div><div class="news-card-body" style="color:#ff8888;font-size:14px">⚠ ไม่สามารถเชื่อมต่อกับบัญชี Vantage<br>ตรวจสอบ METAAPI_TOKEN และ METAAPI_ACCOUNT_ID ใน Secrets</div></div>'
-    pc = "#00ff41" if d["profit"] >= 0 else "#ff3131"
-    parrow = "▲" if d["profit"] >= 0 else "▼"
-    cur = d["currency"]
-    return f'<div class="news-card" style="border-color:#ffd700;margin-bottom:10px"><div class="news-card-title" style="color:#ffd700">💰 MY ACCOUNT (VANTAGE)</div><div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#888">BALANCE</span><span style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:#fff">{d["balance"]:,.2f} {cur}</span></div><div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#888">EQUITY</span><span style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:#4a9eff">{d["equity"]:,.2f} {cur}</span></div><div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#888">PROFIT TODAY</span><span style="font-family:\'Press Start 2P\',monospace;font-size:18px;color:{pc}">{parrow} {d["profit"]:+,.2f} {cur}</span></div></div>'
-def render_news_panel(overview, signals, watch):
-    """Build right-side news/analysis panel HTML"""
+# ── Accuracy & Leaderboard (stored in session) ──
+if "history" not in st.session_state:
+    st.session_state.history = []  # list of {date, pair, signal, result}
+
+def save_signal_history(signals, today_str):
+    for p,(sig,_) in signals.items():
+        exists=[h for h in st.session_state.history if h["date"]==today_str and h["pair"]==p]
+        if not exists:
+            st.session_state.history.append({"date":today_str,"pair":p,"signal":sig,"result":"pending"})
+
+def render_accuracy_panel(prices):
+    history = st.session_state.history
+    # auto-check results: compare signal direction vs actual price change
+    today_str = date.today().strftime("%Y-%m-%d")
+    for h in history:
+        if h["result"]=="pending" and h["pair"] in prices:
+            pv = prices[h["pair"]]
+            if abs(pv["change"]) > 0.0001:
+                if h["signal"]=="BULLISH" and pv["change"]>0: h["result"]="✅"
+                elif h["signal"]=="BEARISH" and pv["change"]<0: h["result"]="✅"
+                elif h["signal"]=="NEUTRAL": h["result"]="➖"
+                else: h["result"]="❌"
+
+    # stats
+    checked=[h for h in history if h["result"] in ["✅","❌"]]
+    correct=[h for h in checked if h["result"]=="✅"]
+    acc=int(len(correct)/len(checked)*100) if checked else 0
+    acc_col="#00ff41" if acc>=60 else "#ffd700" if acc>=40 else "#ff3131"
+
+    # leaderboard by pair
+    pair_stats={}
+    for h in checked:
+        p=h["pair"]
+        if p not in pair_stats: pair_stats[p]={"win":0,"total":0}
+        pair_stats[p]["total"]+=1
+        if h["result"]=="✅": pair_stats[p]["win"]+=1
+    sorted_pairs=sorted(pair_stats.items(), key=lambda x:-x[1]["win"]/max(x[1]["total"],1))
+
+    rows=""
+    for rank,(p,s) in enumerate(sorted_pairs[:5],1):
+        pct=int(s["win"]/s["total"]*100)
+        pc="#00ff41" if pct>=60 else "#ffd700" if pct>=40 else "#ff3131"
+        medal="🥇" if rank==1 else "🥈" if rank==2 else "🥉" if rank==3 else f"#{rank}"
+        rows+=f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:12px">{medal} {p}</span><span style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:{pc}">{pct}% ({s["win"]}/{s["total"]})</span></div>'
+
+    if not rows:
+        rows='<div style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:#555;padding:8px 0">กด ANALYZE เพื่อเริ่มเก็บข้อมูล</div>'
+
+    return f'<div class="news-card" style="border-color:#aa88ff"><div class="news-card-title" style="color:#aa88ff">🎯 AI ACCURACY & LEADERBOARD</div><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;margin-bottom:8px;border-bottom:2px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:13px;color:#888">OVERALL ACC.</span><span style="font-family:\'Press Start 2P\',monospace;font-size:20px;color:{acc_col}">{acc}%</span></div><div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#4a9eff;margin-bottom:6px">🏆 LEADERBOARD</div>{rows}</div>'
+
+def render_news_panel(overview, signals, watch, prices):
     signal_rows=""
     for p,(sig,reason) in signals.items():
         sc="#00ff41" if sig=="BULLISH" else "#ff3131" if sig=="BEARISH" else "#ffd700"
         arrow="▲" if sig=="BULLISH" else "▼" if sig=="BEARISH" else "◆"
-        signal_rows+=f'<div style="background:#1a1a2e;border-left:3px solid {sc};padding:6px 8px;margin:6px 0"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:25px;color:#fff">{p}</span><span style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:{sc};border:1px solid {sc};padding:2px 5px">{arrow} {sig}</span></div><div style="font-family:\'Press Start 2P\',monospace;font-size:30px;color:#aaa;line-height:1.9;margin-top:5px">{reason}</div></div>'
+        pv=prices.get(p,{})
+        dec=5 if "JPY" not in p and "THB" not in p else 3
+        price_str=f'{pv["price"]:.{dec}f}' if pv.get("price") else "---"
+        pc="#00ff41" if pv.get("change",0)>=0 else "#ff3131"
+        pa="▲" if pv.get("change",0)>=0 else "▼"
+        pct_str=f'{pv["pct"]:+.2f}%' if pv.get("pct") else ""
+        signal_rows+=f'<div style="background:#1a1a2e;border-left:3px solid {sc};padding:6px 8px;margin:6px 0"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:14px;color:#fff">{p}</span><div style="display:flex;gap:8px;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:{pc}">{pa}{price_str} <span style="font-size:10px">{pct_str}</span></span><span style="font-family:\'Press Start 2P\',monospace;font-size:13px;color:{sc};border:1px solid {sc};padding:2px 5px">{arrow} {sig}</span></div></div><div style="font-family:\'Press Start 2P\',monospace;font-size:13px;color:#aaa;line-height:1.9;margin-top:5px">{reason}</div></div>'
 
-    html=f'<div class="news-panel"><div class="news-title">📊 ANALYSIS DASHBOARD</div><div class="news-card" style="border-color:#4a9eff"><div class="news-card-title" style="color:#4a9eff">📋 OVERVIEW</div><div class="news-card-body">{overview}</div></div><div class="news-card" style="border-color:#00ff41"><div class="news-card-title" style="color:#00ff41">⚡ SIGNALS</div>{signal_rows}</div><div class="news-card" style="border-color:#ffd700"><div class="news-card-title" style="color:#ffd700">⚠ WATCH</div><div class="news-card-body">{watch}</div></div><div style="border:2px dashed #ff3131;padding:6px 8px;font-family:\'Press Start 2P\',monospace;font-size:25px;color:#ff3131;margin-top:8px;line-height:1.7">⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY</div></div>'
+    accuracy_html = render_accuracy_panel(prices)
+    html=f'<div class="news-panel"><div class="news-title">📊 ANALYSIS DASHBOARD</div><div class="news-card" style="border-color:#4a9eff"><div class="news-card-title" style="color:#4a9eff">📋 OVERVIEW</div><div class="news-card-body">{overview}</div></div><div class="news-card" style="border-color:#00ff41"><div class="news-card-title" style="color:#00ff41">⚡ SIGNALS</div>{signal_rows}</div><div class="news-card" style="border-color:#ffd700"><div class="news-card-title" style="color:#ffd700">⚠ WATCH</div><div class="news-card-body">{watch}</div></div>{accuracy_html}<div style="border:2px dashed #ff3131;padding:6px 8px;font-family:\'Press Start 2P\',monospace;font-size:11px;color:#ff3131;margin-top:8px;line-height:1.7">⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY</div></div>'
     return html
 
 BG_URL     = "https://raw.githubusercontent.com/pech3930/forex-bot/main/office_bg.png"
 SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronaut.png"
 
+pairs_for_ticker = selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"]
+live_prices = fetch_live_prices(pairs_for_ticker)
+
+# ── Ticker bar (always shown) ──
+st.markdown(render_ticker(live_prices), unsafe_allow_html=True)
+
 if not run_btn:
-    # ── waiting state: show room only ──
-    default_agents=build_agents(
-        selected_pairs if selected_pairs else ["EUR/USD","USD/THB","USD/JPY","GBP/USD","XAU/USD"],{})
+    default_agents=build_agents(pairs_for_ticker,{})
     col_room, col_news = st.columns([2, 1])
     with col_room:
         st.components.v1.html(render_canvas(default_agents,BG_URL,SPRITE_URL),height=720,scrolling=False)
     with col_news:
-        st.markdown("""
-        <div class="news-panel">
-          <div class="news-title">📊 ANALYSIS DASHBOARD</div>
-          <div class="news-card" style="border-color:#4a9eff">
-            <div class="news-card-title" style="color:#4a9eff">📋 STATUS</div>
-            <div class="news-card-body">รอการวิเคราะห์... กรุณากดปุ่ม ANALYZE NOW ที่แถบด้านซ้ายเพื่อเริ่มต้น</div>
-          </div>
-          <div class="news-card" style="border-color:#ffd700">
-            <div class="news-card-title" style="color:#ffd700">💡 INFO</div>
-            <div class="news-card-body">AI Agents จะดึงข่าวจาก Reuters และ Investing.com มาวิเคราะห์ผลกระทบต่อคู่เงินที่เลือกไว้</div>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="news-panel"><div class="news-title">📊 ANALYSIS DASHBOARD</div><div class="news-card" style="border-color:#4a9eff"><div class="news-card-title" style="color:#4a9eff">📋 STATUS</div><div class="news-card-body">กดปุ่ม ANALYZE NOW เพื่อเริ่มวิเคราะห์ตลาด</div></div><div class="news-card" style="border-color:#ffd700"><div class="news-card-title" style="color:#ffd700">💡 INFO</div><div class="news-card-body">AI จะดึงข่าว Reuters + Investing.com มาวิเคราะห์</div></div>{render_accuracy_panel(live_prices)}</div>', unsafe_allow_html=True)
 else:
     if not api_key:
-        st.error("NO API KEY - กรุณาใส่ API Key ใน Settings > Secrets")
+        st.error("NO API KEY")
     elif not selected_pairs:
         st.error("SELECT PAIRS")
     else:
@@ -350,14 +305,14 @@ else:
             try:
                 raw=analyze(articles,selected_pairs,api_key)
                 overview,signals,watch=parse_result(raw,selected_pairs)
+                save_signal_history(signals, date.today().strftime("%Y-%m-%d"))
             except Exception as e:
                 st.error(f"API Error: {type(e).__name__}: {e}")
                 overview,signals,watch="Error",{p:("NEUTRAL","API Error") for p in selected_pairs},"Check API Key"
 
-        # ── show room (left) + news panel (right) ──
         final=build_agents(selected_pairs,signals)
         col_room, col_news = st.columns([2, 1])
         with col_room:
             st.components.v1.html(render_canvas(final,BG_URL,SPRITE_URL),height=720,scrolling=False)
         with col_news:
-            st.markdown(render_news_panel(overview, signals, watch), unsafe_allow_html=True)
+            st.markdown(render_news_panel(overview,signals,watch,live_prices), unsafe_allow_html=True)
