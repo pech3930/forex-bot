@@ -289,7 +289,7 @@ def parse_result(text, pairs):
 
 def build_agents(pairs, signals):
     tints = ['#44aaff', '#ffaa44', '#aa88ff', '#44ffaa', '#ffdd44', '#ff88aa']
-    desk_positions = [(0.34, 0.65), (0.51, 0.54), (0.80, 0.72), (0.62, 0.90), (0.67, 0.57), (0.50, 0.63)]
+    desk_positions = [(0.34, 0.65), (0.51, 0.54), (0.80, 0.72), (0.62, 0.90), (0.67, 0.57), (0.45, 0.63)]
     agents = []
     for i, p in enumerate(pairs):
         sig_data = signals.get(p, ("NEUTRAL", "Analyzing...", 5, ""))
