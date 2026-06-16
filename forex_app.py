@@ -97,7 +97,6 @@ def fetch_technical_data(pairs):
             continue
         try:
             t = yf.Ticker(sym)
-            # Multi-timeframe: 1H, 4H, 1D
             tf_data = {}
             for tf_label, tf_period, tf_interval in [("1H", "5d", "1h"), ("4H", "30d", "1h"), ("1D", "90d", "1d")]:
                 h = t.history(period=tf_period, interval=tf_interval)
@@ -117,11 +116,8 @@ def fetch_technical_data(pairs):
                     trend = "BEARISH"
                 else:
                     trend = "NEUTRAL"
-                tf_data[tf_label] = {
-                    "rsi": rsi, "macd": macd_line, "macd_signal": signal_line,
-                    "macd_cross": macd_cross, "ma20": ma20, "ma50": ma50,
-                    "trend": trend, "price": current,
-                }
+                tf_data[tf_label] = {"rsi": rsi, "macd": macd_line, "macd_signal": signal_line,
+                    "macd_cross": macd_cross, "ma20": ma20, "ma50": ma50, "trend": trend, "price": current}
             tech[p] = tf_data
         except:
             tech[p] = {}
@@ -253,11 +249,10 @@ def analyze(articles, pairs, key, tech_data):
 {tech_text}
 
 กฎการวิเคราะห์:
-- RSI > 70 = Overbought (อาจกลับตัวลง), RSI < 30 = Oversold (อาจกลับตัวขึ้น)
+- RSI > 70 = Overbought, RSI < 30 = Oversold
 - MACD cross BULLISH = แนวโน้มขึ้น, BEARISH = แนวโน้มลง
-- ราคาอยู่เหนือ MA20 = ขาขึ้นระยะสั้น, ใต้ MA20 = ขาลงระยะสั้น
+- ราคาเหนือ MA20 = ขาขึ้นระยะสั้น, ใต้ MA20 = ขาลงระยะสั้น
 - ถ้า 1H, 4H, 1D trend ตรงกัน = สัญญาณแรง
-- รวมทั้ง Fundamental (ข่าว) + Technical ในการตัดสิน
 
 ตอบกลับในรูปแบบ JSON เท่านั้น:
 {{
@@ -289,7 +284,7 @@ def parse_result(text, pairs):
 
 def build_agents(pairs, signals):
     tints = ['#44aaff', '#ffaa44', '#aa88ff', '#44ffaa', '#ffdd44', '#ff88aa']
-    desk_positions = [(0.34, 0.65), (0.51, 0.54), (0.80, 0.72), (0.62, 0.90), (0.67, 0.57), (0.44, 0.76)]
+    desk_positions = [(0.34, 0.65), (0.51, 0.54), (0.80, 0.72), (0.62, 0.90), (0.67, 0.57), (0.79, 0.63)]
     agents = []
     for i, p in enumerate(pairs):
         sig_data = signals.get(p, ("NEUTRAL", "Analyzing...", 5, ""))
@@ -387,7 +382,6 @@ def render_news_panel(overview, signals, watch, prices, tech_data):
     for p, sig_data in signals.items():
         sig, reason = sig_data[0], sig_data[1]
         confidence = sig_data[2] if len(sig_data) > 2 else 5
-        tf_trend_str = sig_data[3] if len(sig_data) > 3 else ""
         sc = "#00ff41" if sig == "BULLISH" else "#ff3131" if sig == "BEARISH" else "#ffd700"
         arrow = "▲" if sig == "BULLISH" else "▼" if sig == "BEARISH" else "◆"
         pv = prices.get(p, {})
@@ -396,10 +390,8 @@ def render_news_panel(overview, signals, watch, prices, tech_data):
         pc = "#00ff41" if pv.get("change", 0) >= 0 else "#ff3131"
         pa = "▲" if pv.get("change", 0) >= 0 else "▼"
         pct_str = f'{pv["pct"]:+.2f}%' if pv.get("pct") else ""
-        # confidence bar
         conf_col = "#00ff41" if confidence >= 7 else "#ffd700" if confidence >= 4 else "#ff3131"
         conf_bar = f'<span style="font-family:\'Press Start 2P\',monospace;font-size:11px;color:{conf_col}">CONF: {"█" * confidence}{"░" * (10 - confidence)} {confidence}/10</span>'
-        # tech indicators
         td = tech_data.get(p, {})
         tech_badges = ""
         tech_details = ""
@@ -416,12 +408,19 @@ def render_news_panel(overview, signals, watch, prices, tech_data):
                 macd_c = d1h.get("macd_cross", "NEUTRAL")
                 macd_col = "#00ff41" if macd_c == "BULLISH" else "#ff3131" if macd_c == "BEARISH" else "#ffd700"
                 tech_details = f'<div style="margin-top:5px;padding:4px 6px;background:#0d0d1a;border:1px solid #2a3f6a"><span style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:{rsi_col}">RSI: {rsi} ({rsi_label})</span> <span style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:{macd_col}">MACD: {macd_c}</span></div>'
-
         signal_rows += f'<div style="background:#1a1a2e;border-left:3px solid {sc};padding:8px 10px;margin:8px 0"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:18px;color:#fff">{p}</span><div style="display:flex;gap:8px;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:{pc}">{pa}{price_str} <span style="font-size:13px">{pct_str}</span></span><span style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:{sc};border:1px solid {sc};padding:2px 6px">{arrow} {sig}</span></div></div><div style="margin:5px 0">{conf_bar}</div><div style="margin:4px 0">{tech_badges}</div>{tech_details}<div style="font-family:\'Press Start 2P\',monospace;font-size:16px;color:#aaa;line-height:2.0;margin-top:8px">{reason}</div></div>'
-
     accuracy_html = render_accuracy_panel(prices)
     html = f'<div class="news-panel"><div class="news-title">📊 ANALYSIS DASHBOARD</div><div class="news-card" style="border-color:#4a9eff"><div class="news-card-title" style="color:#4a9eff">📋 OVERVIEW</div><div class="news-card-body">{overview}</div></div><div class="news-card" style="border-color:#00ff41"><div class="news-card-title" style="color:#00ff41">⚡ SIGNALS + TECHNICAL</div>{signal_rows}</div><div class="news-card" style="border-color:#ffd700"><div class="news-card-title" style="color:#ffd700">⚠ WATCH</div><div class="news-card-body">{watch}</div></div>{accuracy_html}<div style="border:2px dashed #ff3131;padding:6px 8px;font-family:\'Press Start 2P\',monospace;font-size:11px;color:#ff3131;margin-top:8px;line-height:1.7">⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL PURPOSES ONLY</div></div>'
     return html
+
+def render_news_feed(articles):
+    if not articles:
+        return ""
+    rows = ""
+    for i, a in enumerate(articles[:8]):
+        src_col = "#4a9eff" if a["source"] == "Reuters" else "#ff8844"
+        rows += f'<div style="background:#1a1a2e;border-left:3px solid {src_col};padding:8px 10px;margin:6px 0"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#fff;line-height:1.8">{a["title"][:80]}</span><span style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:{src_col};white-space:nowrap;margin-left:10px">{a["source"]}</span></div><div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#888;line-height:1.7;margin-top:5px">{a["summary"][:150]}...</div></div>'
+    return f'<div style="background:#0d0d1a;border:3px solid #4a9eff;padding:12px;margin-top:10px;box-shadow:4px 4px 0 #1a4a7a"><div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#4a9eff;margin-bottom:10px;border-bottom:2px solid #4a9eff;padding-bottom:6px">📰 LIVE NEWS FEED</div>{rows}</div>'
 
 BG_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/office_bg.png"
 SPRITE_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/Astronaut.png"
@@ -438,7 +437,9 @@ if not run_btn:
     with col_room:
         st.components.v1.html(render_canvas(default_agents, BG_URL, SPRITE_URL), height=720, scrolling=False)
     with col_news:
-        st.markdown(f'<div class="news-panel"><div class="news-title">📊 ANALYSIS DASHBOARD</div><div class="news-card" style="border-color:#4a9eff"><div class="news-card-title" style="color:#4a9eff">📋 STATUS</div><div class="news-card-body">กดปุ่ม ANALYZE NOW เพื่อเริ่มวิเคราะห์ตลาด</div></div><div class="news-card" style="border-color:#ffd700"><div class="news-card-title" style="color:#ffd700">💡 INFO</div><div class="news-card-body">AI จะวิเคราะห์ทั้ง Fundamental (ข่าว) + Technical (RSI, MACD, MA) แบบ Multi-timeframe</div></div>{render_accuracy_panel(live_prices)}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="news-panel"><div class="news-title">📊 ANALYSIS DASHBOARD</div><div class="news-card" style="border-color:#4a9eff"><div class="news-card-title" style="color:#4a9eff">📋 STATUS</div><div class="news-card-body">กดปุ่ม ANALYZE NOW เพื่อเริ่มวิเคราะห์ตลาด</div></div><div class="news-card" style="border-color:#ffd700"><div class="news-card-title" style="color:#ffd700">💡 INFO</div><div class="news-card-body">AI จะวิเคราะห์ทั้ง Fundamental + Technical แบบ Multi-timeframe</div></div>{render_accuracy_panel(live_prices)}</div>', unsafe_allow_html=True)
+    waiting_articles = fetch_news()
+    st.markdown(render_news_feed(waiting_articles), unsafe_allow_html=True)
 else:
     if not api_key:
         st.error("NO API KEY")
@@ -461,3 +462,4 @@ else:
             st.components.v1.html(render_canvas(final, BG_URL, SPRITE_URL), height=720, scrolling=False)
         with col_news:
             st.markdown(render_news_panel(overview, signals, watch, live_prices, tech_data), unsafe_allow_html=True)
+        st.markdown(render_news_feed(articles), unsafe_allow_html=True)
