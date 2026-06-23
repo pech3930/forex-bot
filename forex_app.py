@@ -3,6 +3,7 @@ import anthropic
 import feedparser
 import json
 import shelve
+import re
 import numpy as np
 import yfinance as yf
 from datetime import datetime, date
@@ -215,7 +216,9 @@ def fetch_news():
         try:
             feed = feedparser.parse(url)
             for e in feed.entries[:8]:
-                articles.append({"source": src, "title": e.get("title", ""), "summary": e.get("summary", "")[:300]})
+                raw_sum = e.get("summary", "") or e.get("description", "") or ""
+                clean_sum = re.sub(r'<[^>]+>', '', raw_sum).strip()[:300]
+                articles.append({"source": src, "title": e.get("title", ""), "summary": clean_sum})
         except:
             pass
     return articles
@@ -417,9 +420,10 @@ def render_news_feed(articles):
     if not articles:
         return ""
     rows = ""
-    for i, a in enumerate(articles[:8]):
+    for i, a in enumerate(articles[:10]):
         src_col = "#4a9eff" if a["source"] == "Reuters" else "#ff8844"
-        rows += f'<div style="background:#1a1a2e;border-left:3px solid {src_col};padding:8px 10px;margin:6px 0"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#fff;line-height:1.8">{a["title"][:80]}</span><span style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:{src_col};white-space:nowrap;margin-left:10px">{a["source"]}</span></div><div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#888;line-height:1.7;margin-top:5px">{a["summary"][:150]}...</div></div>'
+        sum_text = a["summary"][:150] if a["summary"] else "No summary available"
+        rows += f'<div style="background:#1a1a2e;border-left:3px solid {src_col};padding:8px 10px;margin:6px 0"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#fff;line-height:1.8">{a["title"][:80]}</span><span style="font-family:\'Press Start 2P\',monospace;font-size:8px;color:{src_col};white-space:nowrap;margin-left:10px">{a["source"]}</span></div><div style="font-family:\'Press Start 2P\',monospace;font-size:10px;color:#888;line-height:1.7;margin-top:5px">{sum_text}</div></div>'
     return f'<div style="background:#0d0d1a;border:3px solid #4a9eff;padding:12px;margin-top:10px;box-shadow:4px 4px 0 #1a4a7a"><div style="font-family:\'Press Start 2P\',monospace;font-size:12px;color:#4a9eff;margin-bottom:10px;border-bottom:2px solid #4a9eff;padding-bottom:6px">📰 LIVE NEWS FEED</div>{rows}</div>'
 
 BG_URL = "https://raw.githubusercontent.com/pech3930/forex-bot/main/office_bg.png"
