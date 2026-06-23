@@ -216,13 +216,17 @@ def fetch_news():
         try:
             feed = feedparser.parse(url)
             for e in feed.entries[:8]:
-                raw_sum = e.get("summary", "") or e.get("description", "") or ""
-                clean_sum = re.sub(r'<[^>]+>', '', raw_sum).strip()[:300]
-                articles.append({"source": src, "title": e.get("title", ""), "summary": clean_sum})
+                title = e.get("title", "")
+                raw_sum = e.get("summary", "") or e.get("description", "") or e.get("content", [{}])[0].get("value", "") if e.get("content") else ""
+                if not raw_sum:
+                    raw_sum = title
+                clean_sum = re.sub(r'<[^>]+>', '', str(raw_sum)).strip()[:300]
+                if not clean_sum or clean_sum == title:
+                    clean_sum = title
+                articles.append({"source": src, "title": title, "summary": clean_sum})
         except:
             pass
     return articles
-
 def build_tech_prompt(tech_data, pairs):
     lines = []
     for p in pairs:
